@@ -5,6 +5,8 @@ This package is intended to help sample a stream of tracking events, where event
 
 For the purposes of these examples, the "traffic" will be a set of HTTP requests being handled by a server, and "event" will be a blob of metadata about a given HTTP request that might be useful to keep track of later. A "sample rate" of 100 means that for every 100 requests, we capture a single event and indicate that it represents 100 similar requests.
 
+Use
+
 Use the `Sampler` interface in your code.  Each different sampling algorithm implements the Sampler interface.
 
 The following guidelines can help you choose a sampler. Depending on the shape of your traffic, one may serve better than another, or you may need to write a new one! Please consider contributing it back to this package if you do.
