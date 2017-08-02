@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/honeycombio/hound/test"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTotalThroughputUpdateMaps(t *testing.T) {
@@ -130,8 +130,8 @@ func TestTotalThroughputUpdateMaps(t *testing.T) {
 	for i, tst := range tsts {
 		s.currentCounts = tst.inputSampleCount
 		s.updateMaps()
-		test.Equals(t, len(s.currentCounts), 0)
-		test.Equals(t, s.savedSampleRates, tst.expectedSavedSampleRates, fmt.Sprintf("test %d failed", i))
+		assert.Equal(t, len(s.currentCounts), 0)
+		assert.Equal(t, s.savedSampleRates, tst.expectedSavedSampleRates, fmt.Sprintf("test %d failed", i))
 	}
 }
 
@@ -161,7 +161,7 @@ func TestTotalThroughputGetSampleRate(t *testing.T) {
 	}
 	for _, tst := range tsts {
 		rate := s.GetSampleRate(tst.inputKey)
-		test.Equals(t, rate, tst.expectedSampleRate)
-		test.Equals(t, s.currentCounts[tst.inputKey], tst.expectedCurrentCountForKey)
+		assert.Equal(t, rate, tst.expectedSampleRate)
+		assert.Equal(t, s.currentCounts[tst.inputKey], tst.expectedCurrentCountForKey)
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/honeycombio/hound/test"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
@@ -147,8 +147,8 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 	for i, tst := range tsts {
 		a.currentCounts = tst.inputSampleCount
 		a.updateMaps()
-		test.Equals(t, len(a.currentCounts), 0)
-		test.Equals(t, a.savedSampleRates, tst.expectedSavedSampleRates, fmt.Sprintf("test %d failed", i))
+		assert.Equal(t, len(a.currentCounts), 0)
+		assert.Equal(t, a.savedSampleRates, tst.expectedSavedSampleRates, fmt.Sprintf("test %d failed", i))
 	}
 }
 
@@ -178,7 +178,7 @@ func TestAvgSampleWithMinGetSampleRate(t *testing.T) {
 	}
 	for _, tst := range tsts {
 		rate := a.GetSampleRate(tst.inputKey)
-		test.Equals(t, rate, tst.expectedSampleRate)
-		test.Equals(t, a.currentCounts[tst.inputKey], tst.expectedCurrentCountForKey)
+		assert.Equal(t, rate, tst.expectedSampleRate)
+		assert.Equal(t, a.currentCounts[tst.inputKey], tst.expectedCurrentCountForKey)
 	}
 }
