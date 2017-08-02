@@ -3,7 +3,7 @@ package dynsampler
 import (
 	"testing"
 
-	"github.com/honeycombio/hound/test"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStaticGetSampleRate(t *testing.T) {
@@ -14,8 +14,8 @@ func TestStaticGetSampleRate(t *testing.T) {
 		},
 		Default: 3,
 	}
-	test.Equals(t, s.GetSampleRate("one"), 5)
-	test.Equals(t, s.GetSampleRate("two"), 10)
-	test.Equals(t, s.GetSampleRate("three"), 3)
+	assert.Equal(t, s.GetSampleRate("one"), 5)
+	assert.Equal(t, s.GetSampleRate("two"), 10)
+	assert.Equal(t, s.GetSampleRate("three"), 3)
 
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/honeycombio/hound/test"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestOnlyOnceUpdateMaps(t *testing.T) {
@@ -31,7 +31,7 @@ func TestOnlyOnceUpdateMaps(t *testing.T) {
 	for i, tst := range tsts {
 		o.seen = tst.inputSeen
 		o.updateMaps()
-		test.Equals(t, o.seen, tst.expectedSeen, fmt.Sprintf("test %d failed", i))
+		assert.Equal(t, o.seen, tst.expectedSeen, fmt.Sprintf("test %d failed", i))
 	}
 }
 
@@ -56,9 +56,9 @@ func TestOnlyOnceGetSampleRate(t *testing.T) {
 		{"four", 1000000000, true, true},
 	}
 	for _, tst := range tsts {
-		test.Equals(t, o.seen[tst.inputKey], tst.expectedCurrentCountForKeyBefore)
+		assert.Equal(t, o.seen[tst.inputKey], tst.expectedCurrentCountForKeyBefore)
 		rate := o.GetSampleRate(tst.inputKey)
-		test.Equals(t, rate, tst.expectedSampleRate)
-		test.Equals(t, o.seen[tst.inputKey], tst.expectedCurrentCountForKeyAfter)
+		assert.Equal(t, rate, tst.expectedSampleRate)
+		assert.Equal(t, o.seen[tst.inputKey], tst.expectedCurrentCountForKeyAfter)
 	}
 }
