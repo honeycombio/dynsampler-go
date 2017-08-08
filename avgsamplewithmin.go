@@ -34,6 +34,11 @@ type AvgSampleWithMin struct {
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
 
+	// haveData indicates that we have gotten a sample of traffic. Before we've
+	// gotten any samples of traffic, we should we should use the default goal
+	// sample rate for all events instead of sampling everything at 1
+	haveData bool
+
 	lock sync.Mutex
 }
 
@@ -58,6 +63,7 @@ func (a *AvgSampleWithMin) Start() error {
 		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
 		for range ticker.C {
 			a.updateMaps()
+			a.haveData = true
 		}
 	}()
 	return nil
@@ -149,6 +155,9 @@ func (a *AvgSampleWithMin) GetSampleRate(key string) int {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	a.currentCounts[key]++
+	if !a.haveData {
+		return a.GoalSampleRate
+	}
 	if rate, found := a.savedSampleRates[key]; found {
 		return rate
 	}
