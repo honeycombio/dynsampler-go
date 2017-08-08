@@ -140,9 +140,9 @@ func TestAvgSampleGetSampleRateStartup(t *testing.T) {
 		currentCounts:  map[string]int{},
 	}
 	rate := a.GetSampleRate("key")
-	test.Equals(t, rate, 10)
+	assert.Equal(t, rate, 10)
 	// and the counters still get bumped
-	test.Equals(t, a.currentCounts["key"], 1)
+	assert.Equal(t, a.currentCounts["key"], 1)
 }
 
 func TestAvgSampleRateGetSampleRate(t *testing.T) {
