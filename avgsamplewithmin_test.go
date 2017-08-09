@@ -152,8 +152,21 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 	}
 }
 
+func TestAvgSampleWithMinGetSampleRateStartup(t *testing.T) {
+	a := &AvgSampleWithMin{
+		GoalSampleRate: 10,
+		currentCounts:  map[string]int{},
+	}
+	rate := a.GetSampleRate("key")
+	assert.Equal(t, rate, 10)
+	// and the counters still get bumped
+	assert.Equal(t, a.currentCounts["key"], 1)
+}
+
 func TestAvgSampleWithMinGetSampleRate(t *testing.T) {
-	a := &AvgSampleWithMin{}
+	a := &AvgSampleWithMin{
+		haveData: true,
+	}
 	a.currentCounts = map[string]int{
 		"one": 5,
 		"two": 8,
