@@ -3,12 +3,6 @@ os:
 
 language: go
 
-addons:
-    artifacts:
-        debug: true
-        paths:
-        - $GOPATH/bin
-
 dist: trusty
 
 go:
