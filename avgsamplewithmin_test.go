@@ -2,6 +2,8 @@ package dynsampler
 
 import (
 	"fmt"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -194,4 +196,37 @@ func TestAvgSampleWithMinGetSampleRate(t *testing.T) {
 		assert.Equal(t, rate, tst.expectedSampleRate)
 		assert.Equal(t, a.currentCounts[tst.inputKey], tst.expectedCurrentCountForKey)
 	}
+}
+
+func TestAvgSampleWithMinRace(t *testing.T) {
+	a := &AvgSampleWithMin{
+		GoalSampleRate:   2,
+		currentCounts:    map[string]int{},
+		savedSampleRates: map[string]int{},
+		haveData:         true,
+	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	wg.Add(1)
+	// set up 100 parallel readers, each reading 1000 times
+	go func() {
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func(i int) {
+				for j := 0; j < 1000; j++ {
+					rate := a.GetSampleRate("key" + strconv.Itoa(i))
+					assert.NotEqual(t, rate, 0, "rate should never be zero")
+				}
+				wg.Done()
+			}(i)
+		}
+		wg.Done()
+	}()
+	go func() {
+		for i := 0; i < 100; i++ {
+			a.updateMaps()
+		}
+		wg.Done()
+	}()
+	wg.Wait()
 }
