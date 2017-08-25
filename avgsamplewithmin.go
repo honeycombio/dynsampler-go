@@ -63,7 +63,9 @@ func (a *AvgSampleWithMin) Start() error {
 		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
 		for range ticker.C {
 			a.updateMaps()
+			a.lock.Lock()
 			a.haveData = true
+			a.lock.Unlock()
 		}
 	}()
 	return nil
@@ -82,6 +84,8 @@ func (a *AvgSampleWithMin) updateMaps() {
 	numKeys := len(tmpCounts)
 	if numKeys == 0 {
 		// no traffic the last 30s. clear the result map
+		a.lock.Lock()
+		defer a.lock.Unlock()
 		a.savedSampleRates = newSavedSampleRates
 		return
 	}
@@ -146,6 +150,8 @@ func (a *AvgSampleWithMin) updateMaps() {
 			extra += goalForKey - (count / float64(newSavedSampleRates[key]))
 		}
 	}
+	a.lock.Lock()
+	defer a.lock.Unlock()
 	a.savedSampleRates = newSavedSampleRates
 }
 
