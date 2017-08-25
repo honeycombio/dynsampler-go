@@ -54,9 +54,6 @@ func (a *AvgSampleRate) Start() error {
 		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
 		for range ticker.C {
 			a.updateMaps()
-			a.lock.Lock()
-			a.haveData = true
-			a.lock.Unlock()
 		}
 	}()
 	return nil
@@ -135,6 +132,7 @@ func (a *AvgSampleRate) updateMaps() {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	a.savedSampleRates = newSavedSampleRates
+	a.haveData = true
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
