@@ -100,6 +100,8 @@ func (a *AvgSampleWithMin) updateMaps() {
 		for k := range tmpCounts {
 			newSavedSampleRates[k] = 1
 		}
+		a.lock.Lock()
+		defer a.lock.Unlock()
 		a.savedSampleRates = newSavedSampleRates
 		return
 	}
