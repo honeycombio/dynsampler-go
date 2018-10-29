@@ -215,7 +215,7 @@ func TestAvgSampleWithMinRace(t *testing.T) {
 			go func(i int) {
 				for j := 0; j < 1000; j++ {
 					rate := a.GetSampleRate("key" + strconv.Itoa(i))
-					assert.NotEqual(t, rate, 0, "rate should never be zero")
+					assert.NotEqual(t, rate <= 0, true, "rate should never be lte zero", rate)
 				}
 				wg.Done()
 			}(i)
