@@ -25,6 +25,10 @@ type AvgSampleRate struct {
 	// events. Default 10
 	GoalSampleRate int
 
+	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
+	// the sample rate map.
+	MaxKeys int
+
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
 
@@ -148,7 +152,16 @@ func (a *AvgSampleRate) updateMaps() {
 func (a *AvgSampleRate) GetSampleRate(key string) int {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	a.currentCounts[key]++
+
+	// Enforce MaxKeys limit on the size of the map
+	if a.MaxKeys > 0 {
+		// If a key already exists, increment it. If not, but we're under the limit, store a new key
+		if _, found := a.currentCounts[key]; found || len(a.currentCounts) < a.MaxKeys {
+			a.currentCounts[key]++
+		}
+	} else {
+		a.currentCounts[key]++
+	}
 	if !a.haveData {
 		return a.GoalSampleRate
 	}
