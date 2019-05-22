@@ -27,6 +27,12 @@ type AvgSampleWithMin struct {
 	// events. Default 10
 	GoalSampleRate int
 
+	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
+	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
+	// MaxKeys is reached, new keys will not be included in the sample rate map, but
+	// existing keys will continue to be be counted.
+	MaxKeys int
+
 	// MinEventsPerSec - when the total number of events drops below this
 	// threshold, sampling will cease. default 50
 	MinEventsPerSec int
@@ -170,7 +176,16 @@ func (a *AvgSampleWithMin) updateMaps() {
 func (a *AvgSampleWithMin) GetSampleRate(key string) int {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	a.currentCounts[key]++
+
+	// Enforce MaxKeys limit on the size of the map
+	if a.MaxKeys > 0 {
+		// If a key already exists, increment it. If not, but we're under the limit, store a new key
+		if _, found := a.currentCounts[key]; found || len(a.currentCounts) < a.MaxKeys {
+			a.currentCounts[key]++
+		}
+	} else {
+		a.currentCounts[key]++
+	}
 	if !a.haveData {
 		return a.GoalSampleRate
 	}

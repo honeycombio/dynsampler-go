@@ -26,7 +26,9 @@ type AvgSampleRate struct {
 	GoalSampleRate int
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
-	// the sample rate map.
+	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
+	// MaxKeys is reached, new keys will not be included in the sample rate map, but
+	// existing keys will continue to be be counted.
 	MaxKeys int
 
 	savedSampleRates map[string]int
