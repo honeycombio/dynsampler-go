@@ -215,3 +215,28 @@ func TestPerKeyThroughputRace(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+func TestPerKeyThroughputMaxKeys(t *testing.T) {
+	p := &PerKeyThroughput{
+		MaxKeys: 3,
+	}
+	p.currentCounts = map[string]int{
+		"one": 1,
+		"two": 1,
+	}
+	p.savedSampleRates = map[string]int{}
+
+	// with MaxKeys 3, we are under the key limit, so three should get added
+	p.GetSampleRate("three")
+	assert.Equal(t, 3, len(p.currentCounts))
+	assert.Equal(t, 1, p.currentCounts["three"])
+	// Now we're at 3 keys - four should not be added
+	p.GetSampleRate("four")
+	assert.Equal(t, 3, len(p.currentCounts))
+	_, found := p.currentCounts["four"]
+	assert.Equal(t, false, found)
+	// We should still support bumping counts for existing keys
+	p.GetSampleRate("one")
+	assert.Equal(t, 3, len(p.currentCounts))
+	assert.Equal(t, 2, p.currentCounts["one"])
+}

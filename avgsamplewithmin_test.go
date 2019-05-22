@@ -230,3 +230,28 @@ func TestAvgSampleWithMinRace(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+func TestAvgSampleWithMinMaxKeys(t *testing.T) {
+	a := &AvgSampleWithMin{
+		MaxKeys: 3,
+	}
+	a.currentCounts = map[string]int{
+		"one": 1,
+		"two": 1,
+	}
+	a.savedSampleRates = map[string]int{}
+
+	// with MaxKeys 3, we are under the key limit, so three should get added
+	a.GetSampleRate("three")
+	assert.Equal(t, 3, len(a.currentCounts))
+	assert.Equal(t, 1, a.currentCounts["three"])
+	// Now we're at 3 keys - four should not be added
+	a.GetSampleRate("four")
+	assert.Equal(t, 3, len(a.currentCounts))
+	_, found := a.currentCounts["four"]
+	assert.Equal(t, false, found)
+	// We should still support bumping counts for existing keys
+	a.GetSampleRate("one")
+	assert.Equal(t, 3, len(a.currentCounts))
+	assert.Equal(t, 2, a.currentCounts["one"])
+}
