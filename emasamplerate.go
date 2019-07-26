@@ -48,9 +48,23 @@ type EMASampleRate struct {
 	// Keys with averages below this threshold will be removed from the EMA. Default is the same as Weight
 	AgeOutValue float64
 
+	// BurstMultiple, if set, is multiplied by the sum of the running average of counts to define the burst detection threshold.
+	// If total counts observed for a given interval exceed the threshold, EMA is updated immediately, rather than waiting on the
+	// AdjustmentInterval. This throughput-based adjustment allows the dynamic sample rates to reflect changes in traffic from
+	// short bursts. Defaults to 2, negative value disables
+	BurstMultiple float64
+
+	// BurstDetectionDelay indicates the number of intervals to run before burst detection kicks in.
+	// Defaults to 3
+	BurstDetectionDelay uint
+
 	savedSampleRates map[string]int
 	currentCounts    map[string]float64
 	movingAverage    map[string]float64
+	burstThreshold   float64
+	currentBurstSum  float64
+	intervalCount    uint
+	burstSignal      chan struct{}
 
 	// haveData indicates that we have gotten a sample of traffic. Before we've
 	// gotten any samples of traffic, we should we should use the default goal
@@ -58,6 +72,9 @@ type EMASampleRate struct {
 	haveData bool
 
 	lock sync.Mutex
+
+	// used only in tests
+	testSignalMapsDone chan struct{}
 }
 
 func (e *EMASampleRate) Start() error {
@@ -74,17 +91,30 @@ func (e *EMASampleRate) Start() error {
 	if e.AgeOutValue == 0 {
 		e.AgeOutValue = e.Weight
 	}
+	if e.BurstMultiple == 0 {
+		e.BurstMultiple = 2
+	}
+	if e.BurstDetectionDelay == 0 {
+		e.BurstDetectionDelay = 3
+	}
 
-	// initialize internal variables
 	e.savedSampleRates = make(map[string]int)
 	e.currentCounts = make(map[string]float64)
 	e.movingAverage = make(map[string]float64)
+	e.burstSignal = make(chan struct{})
 
-	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(e.AdjustmentInterval))
-		for range ticker.C {
-			e.updateMaps()
+		for {
+			select {
+			case <-e.burstSignal:
+				// reset ticker when we get a burst
+				ticker = time.NewTicker(time.Second * time.Duration(e.AdjustmentInterval))
+				e.updateMaps()
+			case <-ticker.C:
+				e.updateMaps()
+				e.intervalCount++
+			}
 		}
 	}()
 	return nil
@@ -97,6 +127,7 @@ func (e *EMASampleRate) updateMaps() {
 	e.lock.Lock()
 	tmpCounts := e.currentCounts
 	e.currentCounts = make(map[string]float64)
+	e.currentBurstSum = 0
 	e.lock.Unlock()
 	// short circuit if no traffic
 	numKeys := len(tmpCounts)
@@ -113,6 +144,12 @@ func (e *EMASampleRate) updateMaps() {
 	for _, count := range e.movingAverage {
 		sumEvents += count
 	}
+
+	// store this for burst detection
+	e.lock.Lock()
+	e.burstThreshold = sumEvents * e.BurstMultiple
+	e.lock.Unlock()
+
 	goalCount := float64(sumEvents) / float64(e.GoalSampleRate)
 	// goalRatio is the goalCount divided by the sum of all the log values - it
 	// determines what percentage of the total event space belongs to each key
@@ -171,6 +208,10 @@ func (e *EMASampleRate) updateMaps() {
 	defer e.lock.Unlock()
 	e.savedSampleRates = newSavedSampleRates
 	e.haveData = true
+
+	if e.testSignalMapsDone != nil {
+		e.testSignalMapsDone <- struct{}{}
+	}
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
@@ -184,10 +225,24 @@ func (e *EMASampleRate) GetSampleRate(key string) int {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := e.currentCounts[key]; found || len(e.currentCounts) < e.MaxKeys {
 			e.currentCounts[key]++
+			e.currentBurstSum++
 		}
 	} else {
 		e.currentCounts[key]++
+		e.currentBurstSum++
 	}
+
+	// Enforce the burst threshold
+	if e.burstThreshold > 0 && e.currentBurstSum >= e.burstThreshold && e.intervalCount >= e.BurstDetectionDelay {
+		// reset the burst sum to prevent additional burst updates from occurring while updateMaps is running
+		e.currentBurstSum = 0
+		// send but don't block - consuming is blocked on updateMaps, which takes the same lock we're holding
+		select {
+		case e.burstSignal <- struct{}{}:
+		default:
+		}
+	}
+
 	if !e.haveData {
 		return e.GoalSampleRate
 	}

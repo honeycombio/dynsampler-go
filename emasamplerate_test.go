@@ -218,3 +218,36 @@ func TestEMAAgesOutSmallValues(t *testing.T) {
 	_, found = e.movingAverage["asdf"]
 	assert.Equal(t, true, found)
 }
+
+func TestEMABurstDetection(t *testing.T) {
+	// Set the adjustment interval very high so that we never run the regular interval
+	e := &EMASampleRate{AdjustmentInterval: 3600}
+	err := e.Start()
+	assert.Nil(t, err)
+
+	// set some counts and compute the EMA
+	e.currentCounts = map[string]float64{"foo": 1000}
+	e.updateMaps()
+	// should have a burst threshold computed now from this average
+	// 1000 = 0.5 (weight) * 1000 * 2 (threshold multiplier)
+	assert.Equal(t, float64(1000), e.burstThreshold)
+
+	// Let's try and trigger a burst:
+	for i := 0; i <= 1000; i++ {
+		e.GetSampleRate("bar")
+	}
+	// burst sum isn't reset even though we're above our burst threshold
+	// This is because we haven't processed enough intervals to do burst detection yet
+	assert.Equal(t, float64(1001), e.currentBurstSum)
+	// Now let's cheat and say we have
+	e.intervalCount = e.BurstDetectionDelay
+	e.testSignalMapsDone = make(chan struct{})
+	e.GetSampleRate("bar")
+	// wait on updateMaps to complete
+	<-e.testSignalMapsDone
+	// currentBurstSum has been reset
+	assert.Equal(t, float64(0), e.currentBurstSum)
+
+	// ensure EMA is updated
+	assert.Equal(t, float64(501), e.movingAverage["bar"])
+}
