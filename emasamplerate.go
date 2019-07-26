@@ -109,6 +109,7 @@ func (e *EMASampleRate) Start() error {
 			select {
 			case <-e.burstSignal:
 				// reset ticker when we get a burst
+				ticker.Stop()
 				ticker = time.NewTicker(time.Second * time.Duration(e.AdjustmentInterval))
 				e.updateMaps()
 			case <-ticker.C:
