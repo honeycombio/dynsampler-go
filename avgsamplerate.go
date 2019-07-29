@@ -1,6 +1,8 @@
 package dynsampler
 
 import (
+	"encoding/json"
+	"errors"
 	"math"
 	"sort"
 	"sync"
@@ -51,9 +53,11 @@ func (a *AvgSampleRate) Start() error {
 		a.GoalSampleRate = 10
 	}
 
-	// initialize internal variables
-	a.savedSampleRates = make(map[string]int)
-	a.currentCounts = make(map[string]int)
+	// initialize internal variables, if we're not loading from a previous state
+	if a.savedSampleRates == nil {
+		a.savedSampleRates = make(map[string]int)
+		a.currentCounts = make(map[string]int)
+	}
 
 	// spin up calculator
 	go func() {
@@ -171,4 +175,39 @@ func (a *AvgSampleRate) GetSampleRate(key string) int {
 		return rate
 	}
 	return 1
+}
+
+type avgSampleRateState struct {
+	SavedSampleRates map[string]int `json:"saved_sample_rates"`
+}
+
+func (a *AvgSampleRate) SaveState() ([]byte, error) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	if a.savedSampleRates == nil {
+		return nil, errors.New("saved sample rate map is nil")
+	}
+	s := &avgSampleRateState{SavedSampleRates: a.savedSampleRates}
+	return json.Marshal(s)
+}
+
+func (a *AvgSampleRate) LoadState(state []byte) error {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	s := avgSampleRateState{}
+	err := json.Unmarshal(state, &s)
+	if err != nil {
+		return err
+	}
+
+	// Load the previously calculated sample rates
+	a.savedSampleRates = s.SavedSampleRates
+	// Prepare for counting new keys
+	a.currentCounts = make(map[string]int)
+	// Allow GetSampleRate to return calculated sample rates from the loaded map
+	a.haveData = true
+
+	return nil
 }

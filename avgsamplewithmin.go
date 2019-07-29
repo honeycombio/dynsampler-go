@@ -194,3 +194,13 @@ func (a *AvgSampleWithMin) GetSampleRate(key string) int {
 	}
 	return 1
 }
+
+// SaveState is not implemented
+func (a *AvgSampleWithMin) SaveState() ([]byte, error) {
+	return nil, nil
+}
+
+// LoadState is not implemented
+func (a *AvgSampleWithMin) LoadState(state []byte) error {
+	return nil
+}

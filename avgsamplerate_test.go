@@ -237,3 +237,34 @@ func TestAvgSampleRateMaxKeys(t *testing.T) {
 	assert.Equal(t, 3, len(a.currentCounts))
 	assert.Equal(t, 2, a.currentCounts["one"])
 }
+
+func TestAvgSampleRateSaveState(t *testing.T) {
+	var sampler Sampler
+	asr := &AvgSampleRate{}
+	// ensure the interface is implemented
+	sampler = asr
+	err := sampler.Start()
+	assert.Nil(t, err)
+
+	asr.lock.Lock()
+	asr.savedSampleRates = map[string]int{"foo": 2, "bar": 4}
+	asr.haveData = true
+	asr.lock.Unlock()
+
+	assert.Equal(t, 2, sampler.GetSampleRate("foo"))
+	assert.Equal(t, 4, sampler.GetSampleRate("bar"))
+
+	state, err := sampler.SaveState()
+	assert.Nil(t, err)
+
+	var newSampler Sampler
+	newSampler = &AvgSampleRate{}
+
+	err = newSampler.LoadState(state)
+	assert.Nil(t, err)
+	err = newSampler.Start()
+	assert.Nil(t, err)
+
+	assert.Equal(t, 2, newSampler.GetSampleRate("foo"))
+	assert.Equal(t, 4, newSampler.GetSampleRate("bar"))
+}

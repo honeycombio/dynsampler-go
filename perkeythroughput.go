@@ -107,3 +107,13 @@ func (p *PerKeyThroughput) GetSampleRate(key string) int {
 	}
 	return 1
 }
+
+// SaveState is not implemented
+func (p *PerKeyThroughput) SaveState() ([]byte, error) {
+	return nil, nil
+}
+
+// LoadState is not implemented
+func (p *PerKeyThroughput) LoadState(state []byte) error {
+	return nil
+}
