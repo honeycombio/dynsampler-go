@@ -24,13 +24,15 @@ import (
 // given window and more frequent keys will have their sample rate
 // increased proportionally to wind up with the goal sample rate.
 type EMASampleRate struct {
-	// AdjustmentInterval defines how often we adjust the moving average from recent observations
-	// Default 15s
+	// AdjustmentInterval defines how often (in seconds) we adjust the moving average from
+	// recent observations. Default 15s
 	AdjustmentInterval int
 
 	// Weight is a value between (0, 1) indicating the weighting factor used to adjust
 	// the EMA. With larger values, newer data will influence the average more, and older
-	// values will be factored out more quickly. Default is 0.5
+	// values will be factored out more quickly.  In mathematical literature concerning EMA,
+	// this is referred to as the `alpha` constant.
+	// Default is 0.5
 	Weight float64
 
 	// GoalSampleRate is the average sample rate we're aiming for, across all
@@ -42,19 +44,20 @@ type EMASampleRate struct {
 	// existing keys will continue to be be counted.
 	MaxKeys int
 
-	// AgeOutValue indicates the threshold for removing keys from the EMA.
-	// The EMA of any key will approach 0 if it is not repeatedly observed, but will never truly reach it, so
-	// we have to decide what constitutes "zero".
-	// Keys with averages below this threshold will be removed from the EMA. Default is the same as Weight
+	// AgeOutValue indicates the threshold for removing keys from the EMA. The EMA of any key will approach 0
+	// if it is not repeatedly observed, but will never truly reach it, so we have to decide what constitutes "zero".
+	// Keys with averages below this threshold will be removed from the EMA. Default is the same as Weight, as this prevents
+	// a key with the smallest integer value (1) from being aged out immediately.
 	AgeOutValue float64
 
-	// BurstMultiple, if set, is multiplied by the sum of the running average of counts to define the burst detection threshold.
-	// If total counts observed for a given interval exceed the threshold, EMA is updated immediately, rather than waiting on the
-	// AdjustmentInterval. This throughput-based adjustment allows the dynamic sample rates to reflect changes in traffic from
-	// short bursts. Defaults to 2, negative value disables
+	// BurstMultiple, if set, is multiplied by the sum of the running average of counts to define
+	// the burst detection threshold. If total counts observed for a given interval exceed the threshold
+	// EMA is updated immediately, rather than waiting on the AdjustmentInterval.
+	// Defaults to 2; negative value disables. With a default of 2, if your traffic suddenly doubles,
+	// burst detection will kick in.
 	BurstMultiple float64
 
-	// BurstDetectionDelay indicates the number of intervals to run before burst detection kicks in.
+	// BurstDetectionDelay indicates the number of intervals to run after Start is called before burst detection kicks in.
 	// Defaults to 3
 	BurstDetectionDelay uint
 
