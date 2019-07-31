@@ -9,6 +9,7 @@ type Sampler interface {
 	// Start initializes the sampler. You should call Start() before using the
 	// sampler.
 	Start() error
+
 	// GetSampleRate will return the sample rate to use for the string given. You
 	// should call it with whatever key you choose to use to partition traffic
 	// into different sample rates.

@@ -53,11 +53,12 @@ func (a *AvgSampleRate) Start() error {
 		a.GoalSampleRate = 10
 	}
 
-	// initialize internal variables, if we're not loading from a previous state
+	// initialize internal variables
+	// Create saved sample rate map if we're not loading from a previous state
 	if a.savedSampleRates == nil {
 		a.savedSampleRates = make(map[string]int)
-		a.currentCounts = make(map[string]int)
 	}
+	a.currentCounts = make(map[string]int)
 
 	// spin up calculator
 	go func() {
@@ -178,9 +179,11 @@ func (a *AvgSampleRate) GetSampleRate(key string) int {
 }
 
 type avgSampleRateState struct {
+	// This field is exported for use by `JSON.Marshal` and `JSON.Unmarshal`
 	SavedSampleRates map[string]int `json:"saved_sample_rates"`
 }
 
+// SaveState returns a byte array with a JSON representation of the sampler state
 func (a *AvgSampleRate) SaveState() ([]byte, error) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
@@ -192,6 +195,8 @@ func (a *AvgSampleRate) SaveState() ([]byte, error) {
 	return json.Marshal(s)
 }
 
+// LoadState accepts a byte array with a JSON representation of a previous instance's
+// state
 func (a *AvgSampleRate) LoadState(state []byte) error {
 	a.lock.Lock()
 	defer a.lock.Unlock()
@@ -204,8 +209,6 @@ func (a *AvgSampleRate) LoadState(state []byte) error {
 
 	// Load the previously calculated sample rates
 	a.savedSampleRates = s.SavedSampleRates
-	// Prepare for counting new keys
-	a.currentCounts = make(map[string]int)
 	// Allow GetSampleRate to return calculated sample rates from the loaded map
 	a.haveData = true
 
