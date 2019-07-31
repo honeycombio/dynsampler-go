@@ -1,6 +1,8 @@
 package dynsampler
 
 import (
+	"encoding/json"
+	"errors"
 	"math"
 	"sort"
 	"sync"
@@ -106,9 +108,14 @@ func (e *EMASampleRate) Start() error {
 		e.BurstDetectionDelay = 3
 	}
 
-	e.savedSampleRates = make(map[string]int)
+	// Don't override these maps at startup in case they were loaded from a previous state
 	e.currentCounts = make(map[string]float64)
-	e.movingAverage = make(map[string]float64)
+	if e.savedSampleRates == nil {
+		e.savedSampleRates = make(map[string]int)
+	}
+	if e.movingAverage == nil {
+		e.movingAverage = make(map[string]float64)
+	}
 	e.burstSignal = make(chan struct{})
 
 	go func() {
@@ -305,6 +312,48 @@ func (e *EMASampleRate) updateEMA(newCounts map[string]float64) {
 			e.movingAverage[key] = newAvg
 		}
 	}
+}
+
+type emaSampleRateState struct {
+	// These fields are exported for use by `JSON.Marshal` and `JSON.Unmarshal`
+	SavedSampleRates map[string]int     `json:"saved_sample_rates"`
+	MovingAverage    map[string]float64 `json:"moving_average"`
+}
+
+// SaveState returns a byte array with a JSON representation of the sampler state
+func (e *EMASampleRate) SaveState() ([]byte, error) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
+	if e.savedSampleRates == nil {
+		return nil, errors.New("saved sample rate map is nil")
+	}
+	if e.movingAverage == nil {
+		return nil, errors.New("moving average map is nil")
+	}
+	s := &emaSampleRateState{SavedSampleRates: e.savedSampleRates, MovingAverage: e.movingAverage}
+	return json.Marshal(s)
+}
+
+// LoadState accepts a byte array with a JSON representation of a previous instance's
+// state
+func (e *EMASampleRate) LoadState(state []byte) error {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+
+	s := emaSampleRateState{}
+	err := json.Unmarshal(state, &s)
+	if err != nil {
+		return err
+	}
+
+	// Load the previously calculated sample rates
+	e.savedSampleRates = s.SavedSampleRates
+	e.movingAverage = s.MovingAverage
+	// Allow GetSampleRate to return calculated sample rates from the loaded map
+	e.haveData = true
+
+	return nil
 }
 
 func adjustAverage(oldAvg, value float64, alpha float64) float64 {

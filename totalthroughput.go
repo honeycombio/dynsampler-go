@@ -116,3 +116,13 @@ func (t *TotalThroughput) GetSampleRate(key string) int {
 	}
 	return 1
 }
+
+// SaveState is not implemented
+func (t *TotalThroughput) SaveState() ([]byte, error) {
+	return nil, nil
+}
+
+// LoadState is not implemented
+func (t *TotalThroughput) LoadState(state []byte) error {
+	return nil
+}

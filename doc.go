@@ -24,5 +24,9 @@ The following guidelines can help you choose a sampler. Depending on the shape o
 Each sampler implementation below has additional configuration parameters and a
 detailed description of how it chooses a sample rate.
 
+Some implementations implement `SaveState` and `LoadState` - enabling you to serialize the Sampler's internal state
+and load it back. This is useful, for example, if you want to avoid losing calculated sample rates between process
+restarts.
+
 */
 package dynsampler

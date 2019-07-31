@@ -1,6 +1,8 @@
 package dynsampler
 
 import (
+	"encoding/json"
+	"errors"
 	"math"
 	"sort"
 	"sync"
@@ -52,7 +54,10 @@ func (a *AvgSampleRate) Start() error {
 	}
 
 	// initialize internal variables
-	a.savedSampleRates = make(map[string]int)
+	// Create saved sample rate map if we're not loading from a previous state
+	if a.savedSampleRates == nil {
+		a.savedSampleRates = make(map[string]int)
+	}
 	a.currentCounts = make(map[string]int)
 
 	// spin up calculator
@@ -171,4 +176,41 @@ func (a *AvgSampleRate) GetSampleRate(key string) int {
 		return rate
 	}
 	return 1
+}
+
+type avgSampleRateState struct {
+	// This field is exported for use by `JSON.Marshal` and `JSON.Unmarshal`
+	SavedSampleRates map[string]int `json:"saved_sample_rates"`
+}
+
+// SaveState returns a byte array with a JSON representation of the sampler state
+func (a *AvgSampleRate) SaveState() ([]byte, error) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	if a.savedSampleRates == nil {
+		return nil, errors.New("saved sample rate map is nil")
+	}
+	s := &avgSampleRateState{SavedSampleRates: a.savedSampleRates}
+	return json.Marshal(s)
+}
+
+// LoadState accepts a byte array with a JSON representation of a previous instance's
+// state
+func (a *AvgSampleRate) LoadState(state []byte) error {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	s := avgSampleRateState{}
+	err := json.Unmarshal(state, &s)
+	if err != nil {
+		return err
+	}
+
+	// Load the previously calculated sample rates
+	a.savedSampleRates = s.SavedSampleRates
+	// Allow GetSampleRate to return calculated sample rates from the loaded map
+	a.haveData = true
+
+	return nil
 }
