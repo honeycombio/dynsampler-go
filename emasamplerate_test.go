@@ -267,3 +267,38 @@ func TestEMAUpdateMapsRace(t *testing.T) {
 		done++
 	}
 }
+
+func TestEMASampleRateSaveState(t *testing.T) {
+	var sampler Sampler
+	esr := &EMASampleRate{}
+	// ensure the interface is implemented
+	sampler = esr
+	err := sampler.Start()
+	assert.Nil(t, err)
+
+	esr.lock.Lock()
+	esr.savedSampleRates = map[string]int{"foo": 2, "bar": 4}
+	esr.movingAverage = map[string]float64{"foo": 500.1234, "bar": 9999.99}
+	esr.haveData = true
+	esr.lock.Unlock()
+
+	assert.Equal(t, 2, sampler.GetSampleRate("foo"))
+	assert.Equal(t, 4, sampler.GetSampleRate("bar"))
+
+	state, err := sampler.SaveState()
+	assert.Nil(t, err)
+
+	var newSampler Sampler
+	esr2 := &EMASampleRate{}
+	newSampler = esr2
+
+	err = newSampler.LoadState(state)
+	assert.Nil(t, err)
+	err = newSampler.Start()
+	assert.Nil(t, err)
+
+	assert.Equal(t, 2, newSampler.GetSampleRate("foo"))
+	assert.Equal(t, 4, newSampler.GetSampleRate("bar"))
+	assert.Equal(t, float64(500.1234), esr2.movingAverage["foo"])
+	assert.Equal(t, float64(9999.99), esr2.movingAverage["bar"])
+}
