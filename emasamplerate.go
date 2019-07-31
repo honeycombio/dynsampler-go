@@ -73,6 +73,7 @@ type EMASampleRate struct {
 	// gotten any samples of traffic, we should we should use the default goal
 	// sample rate for all events instead of sampling everything at 1
 	haveData bool
+	updating bool
 
 	lock sync.Mutex
 
@@ -127,18 +128,29 @@ func (e *EMASampleRate) Start() error {
 // updateMaps calculates a new saved rate map based on the contents of the
 // counter map
 func (e *EMASampleRate) updateMaps() {
-	// make a local copy of the sample counters for calculation
 	e.lock.Lock()
+	if e.testSignalMapsDone != nil {
+		defer func() {
+			e.testSignalMapsDone <- struct{}{}
+		}()
+	}
+	// short circuit if no traffic
+	if len(e.currentCounts) == 0 {
+		// no traffic the last interval, don't update anything
+		e.lock.Unlock()
+		return
+	}
+	// If there is another updateMaps going, bail
+	if e.updating {
+		e.lock.Unlock()
+		return
+	}
+	e.updating = true
+	// make a local copy of the sample counters for calculation
 	tmpCounts := e.currentCounts
 	e.currentCounts = make(map[string]float64)
 	e.currentBurstSum = 0
 	e.lock.Unlock()
-	// short circuit if no traffic
-	numKeys := len(tmpCounts)
-	if numKeys == 0 {
-		// no traffic the last interval, don't update anything
-		return
-	}
 
 	e.updateEMA(tmpCounts)
 
@@ -149,7 +161,8 @@ func (e *EMASampleRate) updateMaps() {
 		sumEvents += count
 	}
 
-	// store this for burst detection
+	// Store this for burst detection. This is checked in GetSampleRate
+	// so we need to grab the lock when we update it.
 	e.lock.Lock()
 	e.burstThreshold = sumEvents * e.BurstMultiple
 	e.lock.Unlock()
@@ -212,10 +225,7 @@ func (e *EMASampleRate) updateMaps() {
 	defer e.lock.Unlock()
 	e.savedSampleRates = newSavedSampleRates
 	e.haveData = true
-
-	if e.testSignalMapsDone != nil {
-		e.testSignalMapsDone <- struct{}{}
-	}
+	e.updating = false
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that

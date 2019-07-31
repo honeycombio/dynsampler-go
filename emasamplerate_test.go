@@ -251,3 +251,19 @@ func TestEMABurstDetection(t *testing.T) {
 	// ensure EMA is updated
 	assert.Equal(t, float64(501), e.movingAverage["bar"])
 }
+
+func TestEMAUpdateMapsRace(t *testing.T) {
+	e := &EMASampleRate{AdjustmentInterval: 3600}
+	e.testSignalMapsDone = make(chan struct{}, 1000)
+	err := e.Start()
+	assert.Nil(t, err)
+	for i := 0; i < 1000; i++ {
+		e.GetSampleRate("foo")
+		go e.updateMaps()
+	}
+	done := 0
+	for done != 1000 {
+		<-e.testSignalMapsDone
+		done++
+	}
+}
