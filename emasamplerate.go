@@ -16,7 +16,10 @@ import (
 // than compute rate based on a periodic sample of traffic, it maintains an Exponential
 // Moving Average of counts seen per key, and adjusts this average at regular intervals.
 // The weight applied to more recent intervals is defined by `weight`, a number between
-// (0, 1) - larger values weight the average more toward recent observations.
+// (0, 1) - larger values weight the average more toward recent observations. In other words,
+// a larger weight will cause sample rates more quickly adapt to traffic patterns,
+// while a smaller weight will result in sample rates that are less sensitive to bursts or drops
+// in traffic and thus more consistent over time.
 //
 // Keys that are not found in the EMA will always have a sample
 // rate of 1. Keys that occur more frequently will be sampled on a logarithmic
@@ -47,7 +50,8 @@ type EMASampleRate struct {
 	// AgeOutValue indicates the threshold for removing keys from the EMA. The EMA of any key will approach 0
 	// if it is not repeatedly observed, but will never truly reach it, so we have to decide what constitutes "zero".
 	// Keys with averages below this threshold will be removed from the EMA. Default is the same as Weight, as this prevents
-	// a key with the smallest integer value (1) from being aged out immediately.
+	// a key with the smallest integer value (1) from being aged out immediately. This value should generally be <= Weight,
+	// unless you have very specific reasons to set it higher.
 	AgeOutValue float64
 
 	// BurstMultiple, if set, is multiplied by the sum of the running average of counts to define
@@ -136,7 +140,8 @@ func (e *EMASampleRate) updateMaps() {
 	}
 	// short circuit if no traffic
 	if len(e.currentCounts) == 0 {
-		// no traffic the last interval, don't update anything
+		// No traffic the last interval, don't update anything. This is deliberate to avoid
+		// the average decaying when there's no traffic (comes in bursts, or there's some kind of outage).
 		e.lock.Unlock()
 		return
 	}
