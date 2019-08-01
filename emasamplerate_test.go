@@ -301,6 +301,8 @@ func TestEMASampleRateSaveState(t *testing.T) {
 
 	assert.Equal(t, 2, newSampler.GetSampleRate("foo"))
 	assert.Equal(t, 4, newSampler.GetSampleRate("bar"))
+	esr2.lock.Lock()
+	defer esr2.lock.Unlock()
 	assert.Equal(t, float64(500.1234), esr2.movingAverage["foo"])
 	assert.Equal(t, float64(9999.99), esr2.movingAverage["bar"])
 }
