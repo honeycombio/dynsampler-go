@@ -175,6 +175,52 @@ func TestEMASampleUpdateMaps(t *testing.T) {
 			map[string]float64{},
 			map[string]int{},
 		},
+		{
+			map[string]float64{
+				"one":       10,
+				"two":       1,
+				"three":     1,
+				"four":      1,
+				"five":      1,
+				"six":       1,
+				"seven":     1,
+				"eight":     1,
+				"nine":      1,
+				"ten":       1,
+				"eleven":    1,
+				"twelve":    1,
+				"thirteen":  1,
+				"fourteen":  1,
+				"fifteen":   1,
+				"sixteen":   1,
+				"seventeen": 1,
+				"eighteen":  1,
+				"nineteen":  1,
+				"twenty":    1,
+			},
+			map[string]int{
+				"one":       7,
+				"two":       1,
+				"three":     1,
+				"four":      1,
+				"five":      1,
+				"six":       1,
+				"seven":     1,
+				"eight":     1,
+				"nine":      1,
+				"ten":       1,
+				"eleven":    1,
+				"twelve":    1,
+				"thirteen":  1,
+				"fourteen":  1,
+				"fifteen":   1,
+				"sixteen":   1,
+				"seventeen": 1,
+				"eighteen":  1,
+				"nineteen":  1,
+				"twenty":    1,
+			},
+		},
 	}
 	for i, tst := range tsts {
 		e.movingAverage = make(map[string]float64)
@@ -195,6 +241,31 @@ func TestEMASampleUpdateMaps(t *testing.T) {
 		assert.Equal(t, 0, len(e.currentCounts))
 		assert.Equal(t, tst.expectedSavedSampleRates, e.savedSampleRates, fmt.Sprintf("test %d failed", i))
 	}
+}
+
+func TestEMASampleUpdateMapsSparseCounts(t *testing.T) {
+	e := &EMASampleRate{
+		GoalSampleRate: 20,
+		Weight:         0.2,
+		AgeOutValue:    0.2,
+	}
+
+	e.movingAverage = make(map[string]float64)
+	e.savedSampleRates = make(map[string]int)
+
+	for i := 0; i <= 100; i++ {
+		input := make(map[string]float64)
+		// simulate steady stream of input from one key
+		input["largest_count"] = 20
+		// sporadic keys with single counts that come and go with each interval
+		for j := 0; j < 5; j++ {
+			key := randomString(8)
+			input[key] = 1
+		}
+		e.currentCounts = input
+		e.updateMaps()
+	}
+	assert.Equal(t, 16, e.savedSampleRates["largest_count"])
 }
 
 func TestEMAAgesOutSmallValues(t *testing.T) {
@@ -359,7 +430,6 @@ func TestEMASampleRateHitsTargetRate(t *testing.T) {
 				}
 
 				avgSampleRate := float64(totalSampleRate) / float64(totalKeptObservations)
-				fmt.Println(toleranceLower, avgSampleRate, toleranceUpper)
 				if avgSampleRate <= toleranceUpper && avgSampleRate >= toleranceLower {
 					success++
 				}
