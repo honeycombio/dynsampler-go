@@ -3,7 +3,9 @@ package dynsampler
 import (
 	"fmt"
 	"math"
+	mrand "math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -299,6 +301,72 @@ func TestEMASampleRateSaveState(t *testing.T) {
 
 	assert.Equal(t, 2, newSampler.GetSampleRate("foo"))
 	assert.Equal(t, 4, newSampler.GetSampleRate("bar"))
+	esr2.lock.Lock()
+	defer esr2.lock.Unlock()
 	assert.Equal(t, float64(500.1234), esr2.movingAverage["foo"])
 	assert.Equal(t, float64(9999.99), esr2.movingAverage["bar"])
+}
+
+// This is a long test because we generate a lot of random data and run it through the sampler
+// The goal is to determine if we actually hit the specified target rate (within a tolerance) an acceptable
+// number of times. Most of the time, the average sample rate of observations kept should be close
+// to the target rate
+func TestEMASampleRateHitsTargetRate(t *testing.T) {
+	mrand.Seed(time.Now().Unix())
+	testRates := []int{50, 100}
+	testKeyCount := []int{10, 100}
+	tolerancePct := float64(0.2)
+
+	for _, rate := range testRates {
+		tolerance := float64(rate) * tolerancePct
+		toleranceUpper := float64(rate) + tolerance
+		toleranceLower := float64(rate) - tolerance
+
+		for _, keyCount := range testKeyCount {
+			sampler := &EMASampleRate{GoalSampleRate: rate, Weight: 0.5, AgeOutValue: 0.5, currentCounts: make(map[string]float64), movingAverage: make(map[string]float64)}
+
+			// build a consistent set of keys to use
+			keys := make([]string, keyCount)
+			for i := 0; i < keyCount; i++ {
+				keys[i] = randomString(8)
+			}
+
+			for i, key := range keys {
+				// generate key counts of different magnitudes
+				base := math.Pow10(i%3 + 1)
+				count := float64(((i%10)+1))*base + float64(mrand.Intn(int(base)))
+				sampler.currentCounts[key] = count
+			}
+
+			// build an initial set of sample rates so we don't just return the target rate
+			sampler.updateMaps()
+
+			var success float64
+
+			for i := 0; i < 100; i++ {
+				totalSampleRate := 0
+				totalKeptObservations := 0
+				for j, key := range keys {
+					base := math.Pow10(j%3 + 1)
+					count := float64(((j%10)+1))*base + float64(mrand.Intn(int(base)))
+					for k := 0; k < int(count); k++ {
+						rate := sampler.GetSampleRate(key)
+						if mrand.Intn(rate) == 0 {
+							totalSampleRate += rate
+							totalKeptObservations++
+						}
+					}
+				}
+
+				avgSampleRate := float64(totalSampleRate) / float64(totalKeptObservations)
+				fmt.Println(toleranceLower, avgSampleRate, toleranceUpper)
+				if avgSampleRate <= toleranceUpper && avgSampleRate >= toleranceLower {
+					success++
+				}
+				sampler.updateMaps()
+			}
+
+			assert.True(t, success/100.0 >= 0.95, "target rate test %d with key count %d failed with success rate of only %f", rate, keyCount, success/100.0)
+		}
+	}
 }
