@@ -1,5 +1,11 @@
 # dynsampler-go changelog
 
+## 0.2.1 2019-08-07
+
+Fixes
+
+- Corrects some sample rate calculations in the Exponential Moving Averge for very small counts.
+
 ## 0.2.0 2019-07-31
 
 Features
