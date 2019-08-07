@@ -131,6 +131,52 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 			map[string]int{},
 			map[string]int{},
 		},
+		{
+			map[string]int{
+				"one":       10,
+				"two":       1,
+				"three":     1,
+				"four":      1,
+				"five":      1,
+				"six":       1,
+				"seven":     1,
+				"eight":     1,
+				"nine":      1,
+				"ten":       1,
+				"eleven":    1,
+				"twelve":    1,
+				"thirteen":  1,
+				"fourteen":  1,
+				"fifteen":   1,
+				"sixteen":   1,
+				"seventeen": 1,
+				"eighteen":  1,
+				"nineteen":  1,
+				"twenty":    1,
+			},
+			map[string]int{
+				"one":       7,
+				"two":       1,
+				"three":     1,
+				"four":      1,
+				"five":      1,
+				"six":       1,
+				"seven":     1,
+				"eight":     1,
+				"nine":      1,
+				"ten":       1,
+				"eleven":    1,
+				"twelve":    1,
+				"thirteen":  1,
+				"fourteen":  1,
+				"fifteen":   1,
+				"sixteen":   1,
+				"seventeen": 1,
+				"eighteen":  1,
+				"nineteen":  1,
+				"twenty":    1,
+			},
+		},
 	}
 	for i, tst := range tsts {
 		a.currentCounts = tst.inputSampleCount
@@ -335,6 +381,29 @@ func TestAvgSampleRateHitsTargetRate(t *testing.T) {
 			assert.True(t, success/100.0 >= 0.95, "target rate test %d with key count %d failed with success rate of only %f", rate, keyCount, success/100.0)
 		}
 	}
+}
+
+func TestAvgSampleUpdateMapsSparseCounts(t *testing.T) {
+	a := &AvgSampleRate{
+		GoalSampleRate: 20,
+	}
+
+	a.savedSampleRates = make(map[string]int)
+
+	for i := 0; i <= 100; i++ {
+		input := make(map[string]int)
+		// simulate steady stream of input from one key
+		input["largest_count"] = 20
+		// sporadic keys with single counts that come and go with each interval
+		for j := 0; j < 5; j++ {
+			key := randomString(8)
+			input[key] = 1
+		}
+		a.currentCounts = input
+		a.updateMaps()
+	}
+
+	assert.Equal(t, 16, a.savedSampleRates["largest_count"])
 }
 
 func randomString(length int) string {

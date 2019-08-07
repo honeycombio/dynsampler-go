@@ -170,7 +170,7 @@ func (e *EMASampleRate) updateMaps() {
 	// divided by the desired average sample rate
 	var sumEvents float64
 	for _, count := range e.movingAverage {
-		sumEvents += count
+		sumEvents += math.Max(1, count)
 	}
 
 	// Store this for burst detection. This is checked in GetSampleRate
@@ -184,7 +184,10 @@ func (e *EMASampleRate) updateMaps() {
 	// determines what percentage of the total event space belongs to each key
 	var logSum float64
 	for _, count := range e.movingAverage {
-		logSum += math.Log10(float64(count))
+		// We take the max of (1, count) because count * weight is < 1 for
+		// very small counts, which throws off the logSum and can cause
+		// incorrect samples rates to be computed when throughput is low
+		logSum += math.Log10(math.Max(1, count))
 	}
 	goalRatio := goalCount / logSum
 
@@ -205,7 +208,7 @@ func (e *EMASampleRate) updateMaps() {
 	keysRemaining := len(e.movingAverage)
 	var extra float64
 	for _, key := range keys {
-		count := e.movingAverage[key]
+		count := math.Max(1, e.movingAverage[key])
 		// take the max of 1 or my log10 share of the total
 		goalForKey := math.Max(1, math.Log10(count)*goalRatio)
 		// take this key's share of the extra and pass the rest along
