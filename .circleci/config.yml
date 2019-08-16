@@ -49,10 +49,6 @@ workflows:
           requires:
             - setup
       - test_dynsampler:
-          goversion: "9"
-          requires:
-            - setup
-      - test_dynsampler:
           goversion: "10"
           requires:
             - setup
