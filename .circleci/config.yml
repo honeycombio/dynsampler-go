@@ -1,0 +1,66 @@
+version: 2.1
+
+orbs:
+  buildevents: honeycombio/buildevents@0.2.3
+
+executors:
+  go:
+    parameters:
+      goversion:
+        type: string
+        default: "12"
+    working_directory: /go/src/github.com/honeycombio/dynsampler-go
+    docker:
+      - image: circleci/golang:1.<< parameters.goversion >>
+
+jobs:
+  setup:
+    executor: go
+    steps:
+      - buildevents/start_trace
+  watch:
+    executor: go
+    steps:
+      - buildevents/watch_build_and_finish
+
+  test_dynsampler:
+    parameters:
+      goversion:
+        type: string
+        default: "12"
+    executor:
+      name: go
+      goversion: "<< parameters.goversion >>"
+    steps:
+      - buildevents/with_job_span:
+          steps:
+            - checkout
+            - run: go get -v -t -d ./...
+            - run: go test -race -v ./...
+            - buildevents/add_context:
+                field_name: go_version
+                field_value: << parameters.goversion >>
+
+workflows:
+  build_dynsampler:
+    jobs:
+      - setup
+      - watch:
+          requires:
+            - setup
+      - test_dynsampler:
+          goversion: "9"
+          requires:
+            - setup
+      - test_dynsampler:
+          goversion: "10"
+          requires:
+            - setup
+      - test_dynsampler:
+          goversion: "11"
+          requires:
+            - setup
+      - test_dynsampler:
+          goversion: "12"
+          requires:
+            - setup
