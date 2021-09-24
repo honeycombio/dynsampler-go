@@ -1,6 +1,6 @@
 # dynsampler-go
 
-[![OSS Lifecycle](https://img.shields.io/osslifecycle/honeycombio/dynsampler-go)](https://github.com/honeycombio/home/blob/main/honeycomb-oss-lifecycle-and-practices.md)
+[![OSS Lifecycle](https://img.shields.io/osslifecycle/honeycombio/dynsampler-go?color=success)](https://github.com/honeycombio/home/blob/main/honeycomb-oss-lifecycle-and-practices.md)
 
 Dynsampler is a golang library for doing dynamic sampling of traffic before sending it on to [Honeycomb](https://honeycomb.io) (or another analytics system)
 It contains several sampling algorithms to help you select a representative set of events instead of a full stream.
