@@ -8,7 +8,7 @@ executors:
     parameters:
       goversion:
         type: string
-        default: "12"
+        default: "17"
     working_directory: /go/src/github.com/honeycombio/dynsampler-go
     docker:
       - image: circleci/golang:1.<< parameters.goversion >>
@@ -27,7 +27,7 @@ jobs:
     parameters:
       goversion:
         type: string
-        default: "12"
+        default: "17"
     executor:
       name: go
       goversion: "<< parameters.goversion >>"
