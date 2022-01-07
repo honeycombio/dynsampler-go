@@ -20,6 +20,8 @@ executors:
     working_directory: /home/circleci/go/src/github.com/honeycombio/dynsampler-go
     docker:
       - image: cimg/go:1.<< parameters.goversion >>
+        environment:
+          GO111MODULE: "on"
 
 jobs:
   setup:
