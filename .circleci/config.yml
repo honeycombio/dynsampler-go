@@ -3,15 +3,24 @@ version: 2.1
 orbs:
   buildevents: honeycombio/buildevents@0.2.3
 
+matrix_goversions: &matrix_goversions
+  matrix:
+    parameters:
+      goversion: ["12", "13", "14", "15", "16", "17"]
+
+# Default version of Go to use for Go steps
+default_goversion: &default_goversion "17"
+
 executors:
   go:
     parameters:
       goversion:
         type: string
-        default: "12"
-    working_directory: /go/src/github.com/honeycombio/dynsampler-go
+        default: *default_goversion
     docker:
-      - image: circleci/golang:1.<< parameters.goversion >>
+      - image: cimg/go:1.<< parameters.goversion >>
+        environment:
+          GO111MODULE: "on"
 
 jobs:
   setup:
@@ -23,17 +32,24 @@ jobs:
     steps:
       - buildevents/watch_build_and_finish
 
-  test_dynsampler:
+  test:
     parameters:
       goversion:
         type: string
-        default: "12"
+        default: *default_goversion
     executor:
       name: go
       goversion: "<< parameters.goversion >>"
     steps:
       - buildevents/with_job_span:
           steps:
+            - when:
+                condition:
+                  equal: ["12", "<< parameters.goversion >>" ]
+                steps:
+                  - run:
+                      name: Update certs in old CI image
+                      command: sudo apt-get update && sudo apt-get install -y ca-certificates
             - checkout
             - run: go get -v -t -d ./...
             - run: go test -race -v ./...
@@ -42,21 +58,13 @@ jobs:
                 field_value: << parameters.goversion >>
 
 workflows:
-  build_dynsampler:
+  test:
     jobs:
       - setup
       - watch:
           requires:
             - setup
-      - test_dynsampler:
-          goversion: "10"
-          requires:
-            - setup
-      - test_dynsampler:
-          goversion: "11"
-          requires:
-            - setup
-      - test_dynsampler:
-          goversion: "12"
+      - test:
+          <<: *matrix_goversions
           requires:
             - setup
