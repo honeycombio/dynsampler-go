@@ -33,7 +33,7 @@ jobs:
     steps:
       - buildevents/watch_build_and_finish
 
-  test_dynsampler:
+  test:
     parameters:
       goversion:
         type: string
@@ -59,13 +59,13 @@ jobs:
                 field_value: << parameters.goversion >>
 
 workflows:
-  build_dynsampler:
+  test:
     jobs:
       - setup
       - watch:
           requires:
             - setup
-      - test_dynsampler:
+      - test:
           <<: *matrix_goversions
           requires:
             - setup
