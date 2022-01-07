@@ -17,7 +17,6 @@ executors:
       goversion:
         type: string
         default: *default_goversion
-    working_directory: /home/circleci/go/src/github.com/honeycombio/dynsampler-go
     docker:
       - image: cimg/go:1.<< parameters.goversion >>
         environment:
