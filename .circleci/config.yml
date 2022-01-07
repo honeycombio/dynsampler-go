@@ -49,14 +49,8 @@ workflows:
           requires:
             - setup
       - test_dynsampler:
-          goversion: "10"
           requires:
             - setup
-      - test_dynsampler:
-          goversion: "11"
-          requires:
-            - setup
-      - test_dynsampler:
-          goversion: "12"
-          requires:
-            - setup
+          matrix:
+            parameters:
+              goversion: ["10", "11", "12", "13", "14", "15", "16", "17"]
