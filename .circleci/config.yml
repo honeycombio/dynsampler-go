@@ -6,10 +6,10 @@ orbs:
 matrix_goversions: &matrix_goversions
   matrix:
     parameters:
-      goversion: ["12", "13", "14", "15", "16", "17"]
+      goversion: ["12", "13", "14", "15", "16", "17", "18"]
 
 # Default version of Go to use for Go steps
-default_goversion: &default_goversion "17"
+default_goversion: &default_goversion "18"
 
 executors:
   go:
