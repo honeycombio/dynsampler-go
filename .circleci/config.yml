@@ -8,10 +8,10 @@ executors:
     parameters:
       goversion:
         type: string
-        default: "12"
+        default: "18"
     working_directory: /go/src/github.com/honeycombio/dynsampler-go
     docker:
-      - image: circleci/golang:1.<< parameters.goversion >>
+      - image: cimg/go:1.<< parameters.goversion >>
 
 jobs:
   setup:
@@ -27,7 +27,7 @@ jobs:
     parameters:
       goversion:
         type: string
-        default: "12"
+        default: "18"
     executor:
       name: go
       goversion: "<< parameters.goversion >>"
@@ -41,6 +41,11 @@ jobs:
                 field_name: go_version
                 field_value: << parameters.goversion >>
 
+matrix_goversions: &matrix_goversions
+  matrix:
+    parameters:
+      goversion: ["10", "11", "12", "17", "18"]
+
 workflows:
   build_dynsampler:
     jobs:
@@ -49,14 +54,6 @@ workflows:
           requires:
             - setup
       - test_dynsampler:
-          goversion: "10"
-          requires:
-            - setup
-      - test_dynsampler:
-          goversion: "11"
-          requires:
-            - setup
-      - test_dynsampler:
-          goversion: "12"
+          <<: *matrix_goversions
           requires:
             - setup
