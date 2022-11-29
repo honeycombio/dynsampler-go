@@ -6,7 +6,7 @@ orbs:
 matrix_goversions: &matrix_goversions
   matrix:
     parameters:
-      goversion: ["12", "13", "14", "15", "16", "17", "18", "19"]
+      goversion: ["16", "17", "18", "19"]
 
 # Default version of Go to use for Go steps
 default_goversion: &default_goversion "18"
@@ -43,13 +43,6 @@ jobs:
     steps:
       - buildevents/with_job_span:
           steps:
-            - when:
-                condition:
-                  equal: ["12", "<< parameters.goversion >>" ]
-                steps:
-                  - run:
-                      name: Update certs in old CI image
-                      command: sudo apt-get update && sudo apt-get install -y ca-certificates
             - checkout
             - run: go get -v -t -d ./...
             - run: go test -race -v ./...
