@@ -3,6 +3,20 @@ version: 2.1
 orbs:
   buildevents: honeycombio/buildevents@0.9.0
 
+# enable a job when tag created (tag create is ignored by default)
+filters_always: &filters_always
+  filters:
+    tags:
+      only: /.*/
+
+# restrict a job to only run when a version tag (vNNNN) is created
+filters_publish: &filters_publish
+  filters:
+    tags:
+      only: /^v[0-9].*/
+    branches:
+      ignore: /.*/
+
 matrix_goversions: &matrix_goversions
   matrix:
     parameters:
@@ -21,6 +35,9 @@ executors:
       - image: cimg/go:1.<< parameters.goversion >>
         environment:
           GO111MODULE: "on"
+  github:
+    docker:
+      - image: cibuilds/github:0.13.0
 
 jobs:
   setup:
@@ -44,14 +61,24 @@ jobs:
       - buildevents/with_job_span:
           steps:
             - checkout
-            - run: go get -v -t -d ./...
-            - run: go test -race -v ./...
+            - run: make test
+            - store_test_results:
+                path: ./unit-tests.xml
             - buildevents/add_context:
                 field_name: go_version
                 field_value: << parameters.goversion >>
 
+  publish_github:
+    executor: github
+    steps:
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: "create draft release at GitHub"
+          command: make publish_github
+
 workflows:
-  test:
+  build:
     jobs:
       - setup
       - watch:
@@ -59,5 +86,11 @@ workflows:
             - setup
       - test:
           <<: *matrix_goversions
+          <<: *filters_always
+          requires:
+            - setup
+      - publish_github:
+          <<: *filters_publish
+          context: Honeycomb Secrets for Public Repos
           requires:
             - setup
