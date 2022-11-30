@@ -44,8 +44,9 @@ jobs:
       - buildevents/with_job_span:
           steps:
             - checkout
-            - run: go get -v -t -d ./...
-            - run: go test -race -v ./...
+            - run: make test
+            - store_test_results:
+                path: ./unit-tests.xml
             - buildevents/add_context:
                 field_name: go_version
                 field_value: << parameters.goversion >>
