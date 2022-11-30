@@ -3,6 +3,20 @@ version: 2.1
 orbs:
   buildevents: honeycombio/buildevents@0.9.0
 
+# enable a job when tag created (tag create is ignored by default)
+filters_always: &filters_always
+  filters:
+    tags:
+      only: /.*/
+
+# restrict a job to only run when a version tag (vNNNN) is created
+filters_publish: &filters_publish
+  filters:
+    tags:
+      only: /^v[0-9].*/
+    branches:
+      ignore: /.*/
+
 matrix_goversions: &matrix_goversions
   matrix:
     parameters:
@@ -51,8 +65,17 @@ jobs:
                 field_name: go_version
                 field_value: << parameters.goversion >>
 
+  publish_github:
+    executor: github
+    steps:
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: "create draft release at GitHub"
+          command: make publish_github
+
 workflows:
-  test:
+  build:
     jobs:
       - setup
       - watch:
@@ -60,5 +83,11 @@ workflows:
             - setup
       - test:
           <<: *matrix_goversions
+          <<: *filters_always
+          requires:
+            - setup
+      - publish_github:
+          <<: *filters_publish
+          context: Honeycomb Secrets for Public Repos
           requires:
             - setup
