@@ -94,4 +94,4 @@ workflows:
           <<: *filters_publish
           context: Honeycomb Secrets for Public Repos
           requires:
-            - setup
+            - test
