@@ -68,8 +68,7 @@ jobs:
   publish_github:
     executor: go
     steps:
-      - attach_workspace:
-          at: ~/
+      - checkout
       - run:
           name: Install ghr for drafting GitHub Releases
           command: go install github.com/tcnksm/ghr@latest
