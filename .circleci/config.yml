@@ -35,6 +35,9 @@ executors:
       - image: cimg/go:1.<< parameters.goversion >>
         environment:
           GO111MODULE: "on"
+  github:
+    docker:
+      - image: cibuilds/github:0.13.0
 
 jobs:
   setup:
