@@ -81,7 +81,9 @@ workflows:
   build:
     jobs:
       - setup
+          <<: *filters_always
       - watch:
+          <<: *filters_always
           requires:
             - setup
       - test:
