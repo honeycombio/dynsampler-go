@@ -35,9 +35,6 @@ executors:
       - image: cimg/go:1.<< parameters.goversion >>
         environment:
           GO111MODULE: "on"
-  github:
-    docker:
-      - image: cibuilds/github:0.13.0
 
 jobs:
   setup:
@@ -69,10 +66,13 @@ jobs:
                 field_value: << parameters.goversion >>
 
   publish_github:
-    executor: github
+    executor: go
     steps:
       - attach_workspace:
           at: ~/
+      - run:
+          name: Install ghr for drafting GitHub Releases
+          command: go install github.com/tcnksm/ghr@latest
       - run:
           name: "create draft release at GitHub"
           command: make publish_github
