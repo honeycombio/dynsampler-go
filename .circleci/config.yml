@@ -80,7 +80,7 @@ jobs:
 workflows:
   build:
     jobs:
-      - setup
+      - setup:
           <<: *filters_always
       - watch:
           <<: *filters_always
