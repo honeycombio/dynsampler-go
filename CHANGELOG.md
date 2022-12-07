@@ -2,9 +2,7 @@
 
 ## 0.3.0 2022-12-07
 
-### ⚠️ Breaking Changes ⚠️
-
-- Minimum Go version required is 1.16
+⚠️ As of this version, dynsampler-go is only tested on Go 1.16 or greater.
 
 ### Maintenance
 
