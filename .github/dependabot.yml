@@ -8,3 +8,6 @@ updates:
       - "type: dependencies"
     reviewers:
       - "honeycombio/telemetry-team"
+    commit-message:
+      prefix: "maint"
+      include: "scope"
