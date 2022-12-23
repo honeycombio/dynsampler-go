@@ -7,9 +7,9 @@ import (
 )
 
 type Block struct {
-	blockStamp int64
-	countMap   map[string]int
-	next       *Block
+	index    int64 // MUST be monotonically increasing.
+	countMap map[string]int
+	next     *Block
 }
 
 type BlockList struct {
@@ -20,32 +20,58 @@ func NewBlockList() *BlockList {
 	// Create a sentinel node.
 
 	head := &Block{
-		blockStamp: -1,
-		countMap:   make(map[string]int),
-		next:       nil,
+		index:    math.MaxInt64,
+		countMap: make(map[string]int),
+		next:     nil,
 	}
 	return &BlockList{
 		head: head,
 	}
 }
 
-func (b *BlockList) front() *Block {
-	return b.head.next
-}
-
-func (b *BlockList) incrementKey(key string, keyStamp int64) {
+func (b *BlockList) incrementKey(key string, keyIndex int64) {
 	// A block matching keyStamp exists. Just increment the key there.
-	if b.head.next != nil && b.head.next.blockStamp == keyStamp {
+	if b.head.next != nil && b.head.next.index == keyIndex {
 		b.head.next.countMap[key] += 1
+		return
 	}
 
 	// We need to create a new block.
 	currentFront := b.head.next
 	b.head.next = &Block{
-		blockStamp: keyStamp,
-		countMap:   make(map[string]int),
-		next:       currentFront,
+		index:    keyIndex,
+		countMap: make(map[string]int),
+		next:     currentFront,
 	}
+	b.head.next.countMap[key] += 1
+}
+
+func (b *BlockList) aggregateCounts(currentIndex int64, lookbackIndex int64) (aggregateCounts map[string]int) {
+	aggregateCounts = make(map[string]int)
+
+	// Aggregate from currentIndex - 1 and lookback lookbackIndex.
+	startIndex := currentIndex - 1
+	finishIndex := startIndex - lookbackIndex
+
+	// front is a pointer that iterates through our linked list. Start at the sentinel.
+	front := b.head
+	for front != nil {
+		// Start aggregation at current index - 1.
+		if front.index <= startIndex {
+			for k, v := range front.countMap {
+				aggregateCounts[k] += v
+			}
+		}
+
+		// Stop and drop remaining blocks after t - LookBackFrequencySec
+		if front.next != nil && front.next.index < finishIndex {
+			front.next = nil
+			break
+		}
+		front = front.next
+	}
+
+	return aggregateCounts
 }
 
 type WindowedThroughput struct {
@@ -69,7 +95,19 @@ type WindowedThroughput struct {
 	savedSampleRates map[string]int
 	countList        *BlockList
 
+	indexGenerator IndexGenerator
+
 	lock sync.Mutex
+}
+
+type IndexGenerator interface {
+	getCurrentIndex() int64
+}
+
+type UnixSecondsIndexGenerator struct{}
+
+func (g *UnixSecondsIndexGenerator) getCurrentIndex() int64 {
+	return time.Now().Unix()
 }
 
 func (t *WindowedThroughput) Start() error {
@@ -89,6 +127,8 @@ func (t *WindowedThroughput) Start() error {
 	// Create a sentinel node to represent start.
 	t.countList = NewBlockList()
 
+	t.indexGenerator = &UnixSecondsIndexGenerator{}
+
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(t.UpdateFrequencySec))
@@ -99,41 +139,11 @@ func (t *WindowedThroughput) Start() error {
 	return nil
 }
 
-func (t *WindowedThroughput) getCurrentBlockStamp() int64 {
-	return time.Now().Unix()
-}
-
-func (t *WindowedThroughput) getAggregateCounts() (aggregateCounts map[string]int) {
-	head := t.countList.front()
-	current := t.getCurrentBlockStamp()
-
-	// First or second entries in our blocklist are empty.
-	if head == nil || head.next == nil {
-		return aggregateCounts
-	}
-	// Advance to the second entry in our list.
-	head = head.next
-	// Aggregation loop.
-	for head.next != nil {
-		for k, v := range head.countMap {
-			aggregateCounts[k] += v
-		}
-
-		// Stop and drop remaining blocks after t - LookBackFrequencySec
-		if head.next.blockStamp < current-int64(t.LookbackFrequencySec) {
-			head.next = nil
-			break
-		}
-		head = head.next
-	}
-
-	return aggregateCounts
-}
-
 // updateMaps calculates a new saved rate map based on the contents of the
 // counter map
 func (t *WindowedThroughput) updateMaps() {
-	aggregateCounts := t.getAggregateCounts()
+	currentIndex := t.indexGenerator.getCurrentIndex()
+	aggregateCounts := t.countList.aggregateCounts(currentIndex, int64(t.LookbackFrequencySec))
 
 	// Apply the same aggregation algorithm as total throughput
 	// Short circuit if no traffic
@@ -166,7 +176,7 @@ func (t *WindowedThroughput) updateMaps() {
 // key
 func (t *WindowedThroughput) GetSampleRate(key string) int {
 	// Insert the new key into the map.
-	current := t.getCurrentBlockStamp()
+	current := t.indexGenerator.getCurrentIndex()
 	t.countList.incrementKey(key, current)
 
 	t.lock.Lock()
