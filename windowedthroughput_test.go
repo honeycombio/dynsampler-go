@@ -52,18 +52,18 @@ func TestHappyPath(t *testing.T) {
 		sampler.updateMaps()
 	}
 
-	// Time 6: 5 traces seen.
+	// Time 6: 40 traces seen.
 	for i := 0; i < 40; i++ {
-		// This should look back from time 0 - 5
-		assert.Equal(t, 8, sampler.GetSampleRate(key))
+		// This should look back from time (0 - 5]
+		assert.Equal(t, 6, sampler.GetSampleRate(key))
 	}
 	indexGenerator.CurrentIndex += 1
 	sampler.updateMaps()
 
 	// Time 7: 5 traces seen.
 	for i := 0; i < 5; i++ {
-		// This should look back from time 1 - 6
-		assert.Equal(t, 10, sampler.GetSampleRate(key))
+		// This should look back from time (1 - 6]
+		assert.Equal(t, 9, sampler.GetSampleRate(key))
 	}
 }
 
