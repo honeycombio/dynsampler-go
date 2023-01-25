@@ -1,8 +1,5 @@
 version: 2.1
 
-orbs:
-  buildevents: honeycombio/buildevents@0.9.0
-
 # enable a job when tag created (tag create is ignored by default)
 filters_always: &filters_always
   filters:
@@ -37,15 +34,6 @@ executors:
           GO111MODULE: "on"
 
 jobs:
-  setup:
-    executor: go
-    steps:
-      - buildevents/start_trace
-  watch:
-    executor: go
-    steps:
-      - buildevents/watch_build_and_finish
-
   test:
     parameters:
       goversion:
@@ -55,15 +43,10 @@ jobs:
       name: go
       goversion: "<< parameters.goversion >>"
     steps:
-      - buildevents/with_job_span:
-          steps:
-            - checkout
-            - run: make test
-            - store_test_results:
-                path: ./unit-tests.xml
-            - buildevents/add_context:
-                field_name: go_version
-                field_value: << parameters.goversion >>
+      - checkout
+      - run: make test
+      - store_test_results:
+          path: ./unit-tests.xml
 
   publish_github:
     executor: go
@@ -79,17 +62,9 @@ jobs:
 workflows:
   build:
     jobs:
-      - setup:
-          <<: *filters_always
-      - watch:
-          <<: *filters_always
-          requires:
-            - setup
       - test:
           <<: *matrix_goversions
           <<: *filters_always
-          requires:
-            - setup
       - publish_github:
           <<: *filters_publish
           context: Honeycomb Secrets for Public Repos
