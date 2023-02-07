@@ -3,6 +3,8 @@ package dynsampler
 import (
 	"testing"
 
+	"time"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -10,24 +12,28 @@ type TestIndexGenerator struct {
 	CurrentIndex int64
 }
 
-func (g *TestIndexGenerator) getCurrentIndex() int64 {
+func (g *TestIndexGenerator) GetCurrentIndex() int64 {
 	return g.CurrentIndex
+}
+
+func (g *TestIndexGenerator) DurationToIndexes(duration time.Duration) int64 {
+	return int64(duration.Seconds())
 }
 
 func TestHappyPath(t *testing.T) {
 	indexGenerator := &TestIndexGenerator{}
 	sampler := WindowedThroughput{
-		UpdateFrequencySec:   1,
-		LookbackFrequencySec: 5,
-		GoalThroughputPerSec: 2,
-		indexGenerator:       indexGenerator,
-		countList:            NewBlockList(),
+		UpdateFrequencyDuration:   1 * time.Second,
+		LookbackFrequencyDuration: 5 * time.Second,
+		GoalThroughputPerSec:      2,
+		indexGenerator:            indexGenerator,
+		countList:                 NewUnboundedBlockList(),
 	}
 	key := "test_key"
 
 	// Time 0: 20 traces seen.
 	for i := 0; i < 20; i++ {
-		assert.Equal(t, 1, sampler.GetSampleRate(key))
+		assert.Equal(t, 0, sampler.GetSampleRate(key))
 	}
 	indexGenerator.CurrentIndex += 1
 	sampler.updateMaps()
@@ -70,17 +76,17 @@ func TestHappyPath(t *testing.T) {
 func TestDropsOldBlocks(t *testing.T) {
 	indexGenerator := &TestIndexGenerator{}
 	sampler := WindowedThroughput{
-		UpdateFrequencySec:   1,
-		LookbackFrequencySec: 5,
-		GoalThroughputPerSec: 2,
-		indexGenerator:       indexGenerator,
-		countList:            NewBlockList(),
+		UpdateFrequencyDuration:   1 * time.Second,
+		LookbackFrequencyDuration: 5 * time.Second,
+		GoalThroughputPerSec:      2,
+		indexGenerator:            indexGenerator,
+		countList:                 NewUnboundedBlockList(),
 	}
 	key := "test_key"
 
 	// Time 0: 20 traces seen.
 	for i := 0; i < 20; i++ {
-		assert.Equal(t, 1, sampler.GetSampleRate(key))
+		assert.Equal(t, 0, sampler.GetSampleRate(key))
 	}
 
 	for i := 0; i < 7; i++ {
@@ -90,6 +96,6 @@ func TestDropsOldBlocks(t *testing.T) {
 
 	// Time 6: 20 traces seen.
 	for i := 0; i < 20; i++ {
-		assert.Equal(t, 1, sampler.GetSampleRate(key))
+		assert.Equal(t, 0, sampler.GetSampleRate(key))
 	}
 }

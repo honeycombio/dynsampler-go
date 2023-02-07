@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"testing"
@@ -11,26 +12,38 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// AtomicRecord is the naive implementation of blocklist
+// AtomicRecord is the naive implementation of blocklist that serves as the reference implementation
+// for our tests.
+// This datastructure is designed to be completely linearizable, as it has a single lock that it
+// acquires with every operation.
 type AtomicRecord struct {
 	records map[string][]int64
+	maxKeys int
 	lock    sync.Mutex
 }
 
-func NewAtomicRecord() *AtomicRecord {
+func NewAtomicRecord(maxKeys int) *AtomicRecord {
 	return &AtomicRecord{
 		records: make(map[string][]int64),
+		maxKeys: maxKeys,
 	}
 }
 
-func (r *AtomicRecord) incrementKey(key string, keyIndex int64) {
+func (r *AtomicRecord) IncrementKey(key string, keyIndex int64) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	r.records[key] = append(r.records[key], keyIndex)
+	if len(r.records) >= r.maxKeys {
+		return MaxSizeError{key: key}
+	}
+	r.records[key] = append([]int64{keyIndex}, r.records[key]...)
+	return nil
 }
 
-func (r *AtomicRecord) aggregateCounts(currentIndex int64, lookbackIndex int64) (aggregateCounts map[string]int) {
+func (r *AtomicRecord) AggregateCounts(
+	currentIndex int64,
+	lookbackIndex int64,
+) (aggregateCounts map[string]int) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -39,36 +52,101 @@ func (r *AtomicRecord) aggregateCounts(currentIndex int64, lookbackIndex int64) 
 
 	aggregateCounts = make(map[string]int)
 	for key, record := range r.records {
-		for _, r := range record {
+		// Aggregate.
+		lastIndex := -1
+		for i, r := range record {
 			if r <= startIndex && r > finishIndex {
 				aggregateCounts[key] += 1
 			}
+			if lastIndex == -1 && r <= finishIndex {
+				lastIndex = i
+			}
 		}
+		if lastIndex == -1 {
+			continue
+		} else if lastIndex == 0 {
+			delete(r.records, key)
+			continue
+		}
+		r.records[key] = record[0:lastIndex]
 	}
 
 	return aggregateCounts
 }
 
+func getSeededRandom() (*rand.Rand, int64) {
+	seed := time.Now().UnixNano()
+	s1 := rand.NewSource(seed)
+	return rand.New(s1), seed
+}
+
+// Basic sanity test.
 func TestSanity(t *testing.T) {
-	blockList := NewBlockList()
-	atomicRecord := NewAtomicRecord()
+	blockList := NewUnboundedBlockList()
+	atomicRecord := NewAtomicRecord(10)
 	testKey := "test_key"
 	currentIndex := int64(0)
 
 	for i := 0; i < 10; i++ {
-		blockList.incrementKey(testKey, currentIndex)
-		atomicRecord.incrementKey(testKey, currentIndex)
+		blockList.IncrementKey(testKey, currentIndex)
+		atomicRecord.IncrementKey(testKey, currentIndex)
 		currentIndex += 1
 	}
 
-	assert.Equal(t, atomicRecord.aggregateCounts(1, 5), blockList.aggregateCounts(1, 5))
-	assert.Equal(t, atomicRecord.aggregateCounts(0, 2), blockList.aggregateCounts(0, 2))
-	assert.Equal(t, atomicRecord.aggregateCounts(6, 5), blockList.aggregateCounts(6, 5))
+	assert.Equal(t, atomicRecord.AggregateCounts(1, 5), blockList.AggregateCounts(1, 5))
+	assert.Equal(t, atomicRecord.AggregateCounts(0, 2), blockList.AggregateCounts(0, 2))
+	assert.Equal(t, atomicRecord.AggregateCounts(6, 5), blockList.AggregateCounts(6, 5))
 }
 
-func TestConcurrency(t *testing.T) {
-	blockList := NewBlockList()
-	atomicRecord := NewAtomicRecord()
+func TestBounded(t *testing.T) {
+	blockList := NewBoundedBlockList(10)
+	atomicRecord := NewAtomicRecord(10)
+
+	currentIndex := int64(0)
+
+	// Test basic dropping.
+	for i := 0; i < 15; i++ {
+		testKey := fmt.Sprintf("test_%d", i)
+		actualErr := blockList.IncrementKey(testKey, currentIndex)
+		expectedErr := atomicRecord.IncrementKey(testKey, currentIndex)
+		assert.Equal(t, expectedErr, actualErr)
+	}
+
+	// Test expire.
+	currentIndex = 10
+	assert.Equal(t, atomicRecord.AggregateCounts(currentIndex, 5),
+		blockList.AggregateCounts(currentIndex, 5))
+
+	// Consistent single insert per count.
+	for i := 0; i < 15; i++ {
+		testKey := fmt.Sprintf("test_%d", i)
+		actualErr := blockList.IncrementKey(testKey, currentIndex)
+		expectedErr := atomicRecord.IncrementKey(testKey, currentIndex)
+		assert.Equal(t, expectedErr, actualErr)
+		assert.Equal(t, atomicRecord.AggregateCounts(currentIndex, 10),
+			blockList.AggregateCounts(currentIndex, 10))
+		currentIndex += 1
+	}
+
+	// Random insert number of each key.
+	random, _ := getSeededRandom()
+	for i := 0; i < 30; i++ {
+		for j := 0; j < 10; j++ {
+			keySuffix := random.Intn(20)
+			testKey := fmt.Sprintf("test_%d", keySuffix)
+			actualErr := blockList.IncrementKey(testKey, currentIndex)
+			expectedErr := atomicRecord.IncrementKey(testKey, currentIndex)
+			assert.Equal(t, expectedErr, actualErr)
+		}
+
+		assert.Equal(t, atomicRecord.AggregateCounts(currentIndex, 10),
+			blockList.AggregateCounts(currentIndex, 10))
+		currentIndex += 1
+	}
+}
+
+// Simulate a real world use case and compare it against our reference implementation.
+func compareConcurrency(t *testing.T, reference BlockList, actual BlockList) {
 	globalIndex := int64(0)
 	testKey := "test_key"
 
@@ -76,10 +154,7 @@ func TestConcurrency(t *testing.T) {
 	iterations := 50
 	lock := sync.Mutex{}
 
-	seed := time.Now().UnixNano()
-	s1 := rand.NewSource(seed)
-	t.Log("Running with random seed: ", seed)
-	random := rand.New(s1)
+	random, _ := getSeededRandom()
 
 	// Index Ticker
 	indexTicker := time.NewTicker(50 * time.Millisecond)
@@ -94,7 +169,7 @@ func TestConcurrency(t *testing.T) {
 		}
 	}()
 
-	// Index Ticker
+	// Update and aggregation ticker
 	updateTicker := time.NewTicker(55 * time.Millisecond)
 	go func() {
 		for {
@@ -102,12 +177,12 @@ func TestConcurrency(t *testing.T) {
 			case <-done:
 				return
 			case <-updateTicker.C:
-				currentIndex := globalIndex
+				currentIndex := atomic.LoadInt64(&globalIndex)
 
 				lock.Lock()
-				blockAggregate := blockList.aggregateCounts(currentIndex, 10)
-				atomicAggregate := atomicRecord.aggregateCounts(currentIndex, 10)
-				assert.Equal(t, blockAggregate, atomicAggregate)
+				referenceAggregate := reference.AggregateCounts(currentIndex, 10)
+				actualAggregate := actual.AggregateCounts(currentIndex, 10)
+				assert.Equal(t, referenceAggregate, actualAggregate)
 				lock.Unlock()
 			}
 		}
@@ -119,18 +194,55 @@ func TestConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				currentIndex := globalIndex
+				currentIndex := atomic.LoadInt64(&globalIndex)
 
 				// These need to be performed atomically.
 				lock.Lock()
-				blockList.incrementKey(testKey, currentIndex)
-				atomicRecord.incrementKey(testKey, currentIndex)
+				referenceErr := reference.IncrementKey(testKey, currentIndex)
+				actualErr := actual.IncrementKey(testKey, currentIndex)
+				assert.Equal(t, referenceErr, actualErr)
+				sleepTime := time.Duration(random.Intn(100)) * time.Millisecond
 				lock.Unlock()
 
-				time.Sleep(time.Duration(random.Intn(100)) * time.Millisecond)
+				time.Sleep(sleepTime)
 			}
 		}()
 	}
 	wg.Wait()
 	done <- true
+}
+
+func concurrentUpdates(t *testing.T, blockList BlockList) {
+	start := make(chan bool)
+	globalIndex := int64(0)
+
+	// Concurrent inserts.
+	go func() {
+		<-start
+		for i := 0; i < 1000; i++ {
+			for j := 0; j < 15; j++ {
+				currentIndex := atomic.LoadInt64(&globalIndex)
+				testKey := fmt.Sprintf("test_%d", j)
+				blockList.IncrementKey(testKey, currentIndex)
+			}
+		}
+	}()
+	// Concurrent aggregations.
+	go func() {
+		<-start
+		for i := 0; i < 1000; i++ {
+			currentIndex := atomic.LoadInt64(&globalIndex)
+			blockList.AggregateCounts(currentIndex, 10)
+			atomic.AddInt64(&globalIndex, 1)
+		}
+	}()
+	close(start)
+}
+
+func TestAllConcurrency(t *testing.T) {
+	compareConcurrency(t, NewUnboundedBlockList(), NewAtomicRecord(10))
+	compareConcurrency(t, NewBoundedBlockList(10), NewAtomicRecord(10))
+
+	concurrentUpdates(t, NewUnboundedBlockList())
+	concurrentUpdates(t, NewBoundedBlockList(10))
 }
