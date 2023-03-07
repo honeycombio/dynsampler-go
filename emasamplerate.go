@@ -87,6 +87,9 @@ type EMASampleRate struct {
 	testSignalMapsDone chan struct{}
 }
 
+// Ensure we implement the sampler interface
+var _ Sampler = (*EMASampleRate)(nil)
+
 func (e *EMASampleRate) Start() error {
 	// apply defaults
 	if e.AdjustmentInterval == 0 {
@@ -244,8 +247,14 @@ func (e *EMASampleRate) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key. Will never return zero.
+// key.
 func (e *EMASampleRate) GetSampleRate(key string) int {
+	return e.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (e *EMASampleRate) GetSampleRateMulti(key string, count int) int {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -253,12 +262,12 @@ func (e *EMASampleRate) GetSampleRate(key string) int {
 	if e.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := e.currentCounts[key]; found || len(e.currentCounts) < e.MaxKeys {
-			e.currentCounts[key]++
-			e.currentBurstSum++
+			e.currentCounts[key] += float64(count)
+			e.currentBurstSum += float64(count)
 		}
 	} else {
-		e.currentCounts[key]++
-		e.currentBurstSum++
+		e.currentCounts[key] += float64(count)
+		e.currentBurstSum += float64(count)
 	}
 
 	// Enforce the burst threshold

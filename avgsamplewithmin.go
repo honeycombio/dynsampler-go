@@ -48,6 +48,9 @@ type AvgSampleWithMin struct {
 	lock sync.Mutex
 }
 
+// Ensure we implement the sampler interface
+var _ Sampler = (*AvgSampleWithMin)(nil)
+
 func (a *AvgSampleWithMin) Start() error {
 	// apply defaults
 	if a.ClearFrequencySec == 0 {
@@ -172,8 +175,14 @@ func (a *AvgSampleWithMin) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key
+// key.
 func (a *AvgSampleWithMin) GetSampleRate(key string) int {
+	return a.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (a *AvgSampleWithMin) GetSampleRateMulti(key string, count int) int {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -181,10 +190,10 @@ func (a *AvgSampleWithMin) GetSampleRate(key string) int {
 	if a.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := a.currentCounts[key]; found || len(a.currentCounts) < a.MaxKeys {
-			a.currentCounts[key]++
+			a.currentCounts[key] += count
 		}
 	} else {
-		a.currentCounts[key]++
+		a.currentCounts[key] += count
 	}
 	if !a.haveData {
 		return a.GoalSampleRate

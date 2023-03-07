@@ -27,6 +27,9 @@ type OnlyOnce struct {
 	lock sync.Mutex
 }
 
+// Ensure we implement the sampler interface
+var _ Sampler = (*OnlyOnce)(nil)
+
 // Start initializes the static dynsampler
 func (o *OnlyOnce) Start() error {
 	//
@@ -55,8 +58,14 @@ func (o *OnlyOnce) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key
+// key.
 func (o *OnlyOnce) GetSampleRate(key string) int {
+	return o.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (o *OnlyOnce) GetSampleRateMulti(key string, count int) int {
 	o.lock.Lock()
 	defer o.lock.Unlock()
 	if _, found := o.seen[key]; found {

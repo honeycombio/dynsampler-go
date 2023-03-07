@@ -10,6 +10,9 @@ type Static struct {
 	Default int
 }
 
+// Ensure we implement the sampler interface
+var _ Sampler = (*Static)(nil)
+
 // Start initializes the static dynsampler
 func (s *Static) Start() error {
 	if s.Default == 0 {
@@ -19,8 +22,14 @@ func (s *Static) Start() error {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key
+// key.
 func (s *Static) GetSampleRate(key string) int {
+	return s.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (s *Static) GetSampleRateMulti(key string, count int) int {
 	if rate, found := s.Rates[key]; found {
 		return rate
 	}

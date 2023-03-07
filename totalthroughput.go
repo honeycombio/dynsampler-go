@@ -40,6 +40,9 @@ type TotalThroughput struct {
 	lock sync.Mutex
 }
 
+// Ensure we implement the sampler interface
+var _ Sampler = (*TotalThroughput)(nil)
+
 func (t *TotalThroughput) Start() error {
 	// apply defaults
 	if t.ClearFrequencySec == 0 {
@@ -98,18 +101,24 @@ func (t *TotalThroughput) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key
+// key.
 func (t *TotalThroughput) GetSampleRate(key string) int {
+	return t.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (t *TotalThroughput) GetSampleRateMulti(key string, count int) int {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	// Enforce MaxKeys limit on the size of the map
 	if t.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := t.currentCounts[key]; found || len(t.currentCounts) < t.MaxKeys {
-			t.currentCounts[key]++
+			t.currentCounts[key] += count
 		}
 	} else {
-		t.currentCounts[key]++
+		t.currentCounts[key] += count
 	}
 	if rate, found := t.savedSampleRates[key]; found {
 		return rate
