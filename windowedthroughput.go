@@ -34,7 +34,8 @@ type WindowedThroughput struct {
 	UpdateFrequencyDuration time.Duration
 
 	// LookbackFrequency is how far back in time we lookback to dynamically adjust our sampling
-	// rate. Default is 30s. We recommend this to be an _integer multiple_ of
+	// rate. Default is 30 * UpdateFrequencyDuration. This will be 30s assuming the default
+	// configuration of UpdateFrequencyDuration. We enforce this to be an _integer multiple_ of
 	// UpdateFrequencyDuration.
 	LookbackFrequencyDuration time.Duration
 
@@ -86,8 +87,12 @@ func (t *WindowedThroughput) Start() error {
 		t.UpdateFrequencyDuration = time.Second
 	}
 	if t.LookbackFrequencyDuration == 0 {
-		t.LookbackFrequencyDuration = 30 * time.Second
+		t.LookbackFrequencyDuration = 30 * t.UpdateFrequencyDuration
 	}
+	// Floor LookbackFrequencyDuration to be an integer multiple of UpdateFrequencyDuration.
+	t.LookbackFrequencyDuration = t.UpdateFrequencyDuration *
+		(t.LookbackFrequencyDuration / t.UpdateFrequencyDuration)
+
 	if t.GoalThroughputPerSec == 0 {
 		t.GoalThroughputPerSec = 100
 	}

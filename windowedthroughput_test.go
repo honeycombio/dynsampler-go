@@ -99,3 +99,19 @@ func TestDropsOldBlocks(t *testing.T) {
 		assert.Equal(t, 0, sampler.GetSampleRate(key))
 	}
 }
+
+func TestSetsDefaultsCorrectly(t *testing.T) {
+	sampler1 := WindowedThroughput{}
+	sampler1.Start()
+
+	assert.Equal(t, time.Second, sampler1.UpdateFrequencyDuration)
+	assert.Equal(t, 30*time.Second, sampler1.LookbackFrequencyDuration)
+
+	sampler2 := WindowedThroughput{
+		UpdateFrequencyDuration:   5 * time.Second,
+		LookbackFrequencyDuration: 18 * time.Second,
+	}
+	sampler2.Start()
+	assert.Equal(t, 5*time.Second, sampler2.UpdateFrequencyDuration)
+	assert.Equal(t, 15*time.Second, sampler2.LookbackFrequencyDuration)
+}

@@ -44,8 +44,7 @@ func NewUnboundedBlockList() BlockList {
 
 // IncrementKey is used when we've encounted a new key. The current keyIndex is also provided.
 // This function will increment the key in the current block or create a new block, if needed.
-// The happy path invocation is very fast, O(1) and lock-less. We do have to lock to create a new
-// block.
+// The happy path invocation is very fast, O(1).
 func (b *UnboundedBlockList) IncrementKey(key string, keyIndex int64) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
