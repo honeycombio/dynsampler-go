@@ -177,11 +177,12 @@ func compareConcurrency(t *testing.T, reference BlockList, actual BlockList) {
 			case <-done:
 				return
 			case <-updateTicker.C:
-				currentIndex := atomic.LoadInt64(&globalIndex)
 
 				lock.Lock()
+				currentIndex := atomic.LoadInt64(&globalIndex)
 				referenceAggregate := reference.AggregateCounts(currentIndex, 10)
 				actualAggregate := actual.AggregateCounts(currentIndex, 10)
+
 				assert.Equal(t, referenceAggregate, actualAggregate)
 				lock.Unlock()
 			}
@@ -194,13 +195,14 @@ func compareConcurrency(t *testing.T, reference BlockList, actual BlockList) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				currentIndex := atomic.LoadInt64(&globalIndex)
 
 				// These need to be performed atomically.
 				lock.Lock()
+				currentIndex := atomic.LoadInt64(&globalIndex)
 				referenceErr := reference.IncrementKey(testKey, currentIndex)
 				actualErr := actual.IncrementKey(testKey, currentIndex)
 				assert.Equal(t, referenceErr, actualErr)
+
 				sleepTime := time.Duration(random.Intn(100)) * time.Millisecond
 				lock.Unlock()
 
