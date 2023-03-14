@@ -21,6 +21,10 @@ func (s *Static) Start() error {
 	return nil
 }
 
+func (s *Static) Stop() error {
+	return nil
+}
+
 // GetSampleRate takes a key and returns the appropriate sample rate for that
 // key.
 func (s *Static) GetSampleRate(key string) int {

@@ -40,6 +40,7 @@ type AvgSampleRate struct {
 	// gotten any samples of traffic, we should we should use the default goal
 	// sample rate for all events instead of sampling everything at 1
 	haveData bool
+	done     chan struct{}
 
 	lock sync.Mutex
 }
@@ -62,14 +63,26 @@ func (a *AvgSampleRate) Start() error {
 		a.savedSampleRates = make(map[string]int)
 	}
 	a.currentCounts = make(map[string]int)
+	a.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
-		for range ticker.C {
-			a.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.updateMaps()
+			case <-a.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (a *AvgSampleRate) Stop() error {
+	close(a.done)
 	return nil
 }
 

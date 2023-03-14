@@ -24,6 +24,8 @@ type OnlyOnce struct {
 	ClearFrequencySec int
 
 	seen map[string]bool
+	done chan struct{}
+
 	lock sync.Mutex
 }
 
@@ -40,14 +42,26 @@ func (o *OnlyOnce) Start() error {
 		o.ClearFrequencySec = 30
 	}
 	o.seen = make(map[string]bool)
+	o.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(o.ClearFrequencySec))
-		for range ticker.C {
-			o.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				o.updateMaps()
+			case <-o.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (o *OnlyOnce) Stop() error {
+	close(o.done)
 	return nil
 }
 

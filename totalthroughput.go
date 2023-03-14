@@ -36,6 +36,7 @@ type TotalThroughput struct {
 
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
+	done             chan struct{}
 
 	lock sync.Mutex
 }
@@ -55,14 +56,26 @@ func (t *TotalThroughput) Start() error {
 	// initialize internal variables
 	t.savedSampleRates = make(map[string]int)
 	t.currentCounts = make(map[string]int)
+	t.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(t.ClearFrequencySec))
-		for range ticker.C {
-			t.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				t.updateMaps()
+			case <-t.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (t *TotalThroughput) Stop() error {
+	close(t.done)
 	return nil
 }
 

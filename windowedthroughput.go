@@ -50,6 +50,7 @@ type WindowedThroughput struct {
 	MaxKeys int
 
 	savedSampleRates map[string]int
+	done             chan struct{}
 	countList        BlockList
 
 	indexGenerator IndexGenerator
@@ -109,6 +110,7 @@ func (t *WindowedThroughput) Start() error {
 
 	// Initialize internal variables.
 	t.savedSampleRates = make(map[string]int)
+	t.done = make(chan struct{})
 	// Initialize the index generator. Each UpdateFrequencyDuration represents a single tick of the
 	// index.
 	t.indexGenerator = &UnixSecondsIndexGenerator{
@@ -118,10 +120,21 @@ func (t *WindowedThroughput) Start() error {
 	// Spin up calculator.
 	go func() {
 		ticker := time.NewTicker(t.UpdateFrequencyDuration)
-		for range ticker.C {
-			t.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				t.updateMaps()
+			case <-t.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (t *WindowedThroughput) Stop() error {
+	close(t.done)
 	return nil
 }
 
