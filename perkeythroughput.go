@@ -30,6 +30,7 @@ type PerKeyThroughput struct {
 
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
+	done             chan struct{}
 
 	lock sync.Mutex
 }
@@ -49,14 +50,26 @@ func (p *PerKeyThroughput) Start() error {
 	// initialize internal variables
 	p.savedSampleRates = make(map[string]int)
 	p.currentCounts = make(map[string]int)
+	p.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(p.ClearFrequencySec))
-		for range ticker.C {
-			p.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				p.updateMaps()
+			case <-p.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (p *PerKeyThroughput) Stop() error {
+	close(p.done)
 	return nil
 }
 

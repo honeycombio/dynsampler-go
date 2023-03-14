@@ -10,6 +10,9 @@ type Sampler interface {
 	// sampler.
 	Start() error
 
+	// Stop halts the sampler and any background goroutines
+	Stop() error
+
 	// GetSampleRate will return the sample rate to use for the given key
 	// string. You should call it with whatever key you choose to use to
 	// partition traffic into different sample rates. It assumes that you're

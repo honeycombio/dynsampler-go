@@ -80,6 +80,7 @@ type EMASampleRate struct {
 	// sample rate for all events instead of sampling everything at 1
 	haveData bool
 	updating bool
+	done     chan struct{}
 
 	lock sync.Mutex
 
@@ -120,9 +121,11 @@ func (e *EMASampleRate) Start() error {
 		e.movingAverage = make(map[string]float64)
 	}
 	e.burstSignal = make(chan struct{})
+	e.done = make(chan struct{})
 
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(e.AdjustmentInterval))
+		defer ticker.Stop()
 		for {
 			select {
 			case <-e.burstSignal:
@@ -133,9 +136,16 @@ func (e *EMASampleRate) Start() error {
 			case <-ticker.C:
 				e.updateMaps()
 				e.intervalCount++
+			case <-e.done:
+				return
 			}
 		}
 	}()
+	return nil
+}
+
+func (e *EMASampleRate) Stop() error {
+	close(e.done)
 	return nil
 }
 
