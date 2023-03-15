@@ -11,7 +11,7 @@ import (
 //
 // If your key space is sharded across different servers, this is a good method
 // for making sure each server sends roughly the same volume of content to
-// Honeycomb. It performs poorly when active the keyspace is very large.
+// Honeycomb. It performs poorly when the active keyspace is very large.
 //
 // GoalThroughputSec * ClearFrequencySec defines the upper limit of the number
 // of keys that can be reported and stay under the goal, but with that many
