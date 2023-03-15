@@ -20,7 +20,7 @@ matrix_goversions: &matrix_goversions
       goversion: ["17", "18", "19", "20"]
 
 # Default version of Go to use for Go steps
-default_goversion: &default_goversion "18"
+default_goversion: &default_goversion "20"
 
 executors:
   go:
