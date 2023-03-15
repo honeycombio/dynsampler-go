@@ -9,10 +9,10 @@ import (
 // BlockList is a data structure that keeps track of how often keys occur in a given time range in
 // order to perform windowed lookback sampling. BlockList operates with monotonically increasing
 // indexes, instead of timestamps.
-// A BlockList is a single linked list of Blocks. Each Block has a frequency hashmap and an unique
+// A BlockList is a single linked list of Blocks. Each Block has a frequency hashmap and a unique
 // index.
 type BlockList interface {
-	IncrementKey(key string, keyIndex int64) error
+	IncrementKey(key string, keyIndex int64, count int) error
 	AggregateCounts(currentIndex int64, lookbackIndex int64) map[string]int
 }
 
@@ -42,19 +42,20 @@ func NewUnboundedBlockList() BlockList {
 	}
 }
 
-// IncrementKey is used when we've encounted a new key. The current keyIndex is also provided.
-// This function will increment the key in the current block or create a new block, if needed.
-// The happy path invocation is very fast, O(1).
-func (b *UnboundedBlockList) IncrementKey(key string, keyIndex int64) error {
+// IncrementKey is used when we've encounted a new key. The current keyIndex is
+// also provided. This function will increment the key in the current block or
+// create a new block, if needed. The happy path invocation is very fast, O(1).
+// The count is the number of events that this call represents.
+func (b *UnboundedBlockList) IncrementKey(key string, keyIndex int64, count int) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-	return b.doIncrement(key, keyIndex)
+	return b.doIncrement(key, keyIndex, count)
 }
 
-func (b *UnboundedBlockList) doIncrement(key string, keyIndex int64) error {
+func (b *UnboundedBlockList) doIncrement(key string, keyIndex int64, count int) error {
 	// A block matching keyStamp exists. Just increment the key there.
 	if b.head.next != nil && b.head.next.index == keyIndex {
-		b.head.next.keyToCount[key] += 1
+		b.head.next.keyToCount[key] += count
 		return nil
 	}
 
@@ -65,7 +66,7 @@ func (b *UnboundedBlockList) doIncrement(key string, keyIndex int64) error {
 		keyToCount: make(map[string]int),
 		next:       currentFront,
 	}
-	b.head.next.keyToCount[key] += 1
+	b.head.next.keyToCount[key] += count
 	return nil
 }
 
@@ -145,7 +146,7 @@ func NewBoundedBlockList(maxKeys int) BlockList {
 
 // IncrementKey will always increment an existing key. If the key is new, it will be rejected if
 // there are maxKeys existing entries.
-func (b *BoundedBlockList) IncrementKey(key string, keyIndex int64) error {
+func (b *BoundedBlockList) IncrementKey(key string, keyIndex int64, count int) error {
 	b.baseList.lock.Lock()
 	defer b.baseList.lock.Unlock()
 
@@ -154,7 +155,7 @@ func (b *BoundedBlockList) IncrementKey(key string, keyIndex int64) error {
 		return MaxSizeError{key: key}
 	}
 
-	b.baseList.doIncrement(key, keyIndex)
+	b.baseList.doIncrement(key, keyIndex, count)
 	return nil
 }
 

@@ -8,8 +8,9 @@ import (
 	"github.com/honeycombio/dynsampler-go"
 )
 
+// we'll accept 2% slop
 func isCloseTo(want, got int) bool {
-	acceptableVariance := (want * 2) / 10
+	acceptableVariance := (want * 2) / 100
 	return got >= want-acceptableVariance && got <= want+acceptableVariance
 }
 
@@ -53,6 +54,12 @@ func TestGenericSamplerBehavior(t *testing.T) {
 				ClearFrequencySec:    1,
 				GoalThroughputPerSec: 5,
 			}, []int{1, 3, 9, 27, 81, 243, 729, 2187},
+		},
+		{"WindowedThroughput",
+			&dynsampler.WindowedThroughput{
+				UpdateFrequencyDuration:   100 * time.Millisecond,
+				LookbackFrequencyDuration: 1 * time.Second,
+			}, []int{1, 1, 1, 2, 6, 19, 58, 174},
 		},
 	}
 

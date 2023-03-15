@@ -16,27 +16,34 @@ import (
 // for our tests.
 // This datastructure is designed to be completely linearizable, as it has a single lock that it
 // acquires with every operation.
+
+type pair struct {
+	index int64
+	count int
+}
+
 type AtomicRecord struct {
-	records map[string][]int64
+	records map[string][]pair
 	maxKeys int
 	lock    sync.Mutex
 }
 
 func NewAtomicRecord(maxKeys int) *AtomicRecord {
 	return &AtomicRecord{
-		records: make(map[string][]int64),
+		records: make(map[string][]pair),
 		maxKeys: maxKeys,
 	}
 }
 
-func (r *AtomicRecord) IncrementKey(key string, keyIndex int64) error {
+func (r *AtomicRecord) IncrementKey(key string, keyIndex int64, count int) error {
+
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
 	if len(r.records) >= r.maxKeys {
 		return MaxSizeError{key: key}
 	}
-	r.records[key] = append([]int64{keyIndex}, r.records[key]...)
+	r.records[key] = append([]pair{{index: keyIndex, count: count}}, r.records[key]...)
 	return nil
 }
 
@@ -55,10 +62,10 @@ func (r *AtomicRecord) AggregateCounts(
 		// Aggregate.
 		lastIndex := -1
 		for i, r := range record {
-			if r <= startIndex && r > finishIndex {
-				aggregateCounts[key] += 1
+			if r.index <= startIndex && r.index > finishIndex {
+				aggregateCounts[key] += r.count
 			}
-			if lastIndex == -1 && r <= finishIndex {
+			if lastIndex == -1 && r.index <= finishIndex {
 				lastIndex = i
 			}
 		}
@@ -88,8 +95,8 @@ func TestSanity(t *testing.T) {
 	currentIndex := int64(0)
 
 	for i := 0; i < 10; i++ {
-		blockList.IncrementKey(testKey, currentIndex)
-		atomicRecord.IncrementKey(testKey, currentIndex)
+		blockList.IncrementKey(testKey, currentIndex, 1)
+		atomicRecord.IncrementKey(testKey, currentIndex, 1)
 		currentIndex += 1
 	}
 
@@ -107,8 +114,8 @@ func TestBounded(t *testing.T) {
 	// Test basic dropping.
 	for i := 0; i < 15; i++ {
 		testKey := fmt.Sprintf("test_%d", i)
-		actualErr := blockList.IncrementKey(testKey, currentIndex)
-		expectedErr := atomicRecord.IncrementKey(testKey, currentIndex)
+		actualErr := blockList.IncrementKey(testKey, currentIndex, 1)
+		expectedErr := atomicRecord.IncrementKey(testKey, currentIndex, 1)
 		assert.Equal(t, expectedErr, actualErr)
 	}
 
@@ -120,8 +127,8 @@ func TestBounded(t *testing.T) {
 	// Consistent single insert per count.
 	for i := 0; i < 15; i++ {
 		testKey := fmt.Sprintf("test_%d", i)
-		actualErr := blockList.IncrementKey(testKey, currentIndex)
-		expectedErr := atomicRecord.IncrementKey(testKey, currentIndex)
+		actualErr := blockList.IncrementKey(testKey, currentIndex, 1)
+		expectedErr := atomicRecord.IncrementKey(testKey, currentIndex, 1)
 		assert.Equal(t, expectedErr, actualErr)
 		assert.Equal(t, atomicRecord.AggregateCounts(currentIndex, 10),
 			blockList.AggregateCounts(currentIndex, 10))
@@ -134,8 +141,8 @@ func TestBounded(t *testing.T) {
 		for j := 0; j < 10; j++ {
 			keySuffix := random.Intn(20)
 			testKey := fmt.Sprintf("test_%d", keySuffix)
-			actualErr := blockList.IncrementKey(testKey, currentIndex)
-			expectedErr := atomicRecord.IncrementKey(testKey, currentIndex)
+			actualErr := blockList.IncrementKey(testKey, currentIndex, 1)
+			expectedErr := atomicRecord.IncrementKey(testKey, currentIndex, 1)
 			assert.Equal(t, expectedErr, actualErr)
 		}
 
@@ -199,8 +206,8 @@ func compareConcurrency(t *testing.T, reference BlockList, actual BlockList) {
 				// These need to be performed atomically.
 				lock.Lock()
 				currentIndex := atomic.LoadInt64(&globalIndex)
-				referenceErr := reference.IncrementKey(testKey, currentIndex)
-				actualErr := actual.IncrementKey(testKey, currentIndex)
+				referenceErr := reference.IncrementKey(testKey, currentIndex, 1)
+				actualErr := actual.IncrementKey(testKey, currentIndex, 1)
 				assert.Equal(t, referenceErr, actualErr)
 
 				sleepTime := time.Duration(random.Intn(100)) * time.Millisecond
@@ -225,7 +232,7 @@ func concurrentUpdates(t *testing.T, blockList BlockList) {
 			for j := 0; j < 15; j++ {
 				currentIndex := atomic.LoadInt64(&globalIndex)
 				testKey := fmt.Sprintf("test_%d", j)
-				blockList.IncrementKey(testKey, currentIndex)
+				blockList.IncrementKey(testKey, currentIndex, 1)
 			}
 		}
 	}()

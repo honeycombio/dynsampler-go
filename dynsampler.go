@@ -16,15 +16,16 @@ type Sampler interface {
 	// GetSampleRate will return the sample rate to use for the given key
 	// string. You should call it with whatever key you choose to use to
 	// partition traffic into different sample rates. It assumes that you're
-	// calling it for a single span (not a trace), and simply calls
-	// GetSampleRateMulti with 1 for the second parameter.
+	// calling it for a single item to be sampled (typically a span from a
+	// trace), and simply calls GetSampleRateMulti with 1 for the second
+	// parameter.
 	GetSampleRate(string) int
 
 	// GetSampleRateMulti will return the sample rate to use for the given key
 	// string. You should call it with whatever key you choose to use to
 	// partition traffic into different sample rates. It assumes you're calling
-	// it for a trace. The second parameter is the number of events this trace
-	// contains.
+	// it for a group of samples. The second parameter is the number of samples
+	// this call represents.
 	GetSampleRateMulti(string, int) int
 
 	// SaveState returns a byte array containing the state of the Sampler implementation.

@@ -182,7 +182,7 @@ func (t *WindowedThroughput) GetSampleRate(key string) int {
 func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
 	// Insert the new key into the map.
 	current := t.indexGenerator.GetCurrentIndex()
-	err := t.countList.IncrementKey(key, current)
+	err := t.countList.IncrementKey(key, current, count)
 
 	// We've reached MaxKeys, return 0.
 	if err != nil {
