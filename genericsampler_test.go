@@ -56,6 +56,18 @@ func TestGenericSamplerBehavior(t *testing.T) {
 				LookbackFrequencyDuration: 1 * time.Second,
 			}, []int{1, 1, 1, 2, 6, 19, 58, 174},
 		},
+		{"EMAThroughput",
+			&dynsampler.EMAThroughput{
+				AdjustmentInterval:   1 * time.Second,
+				GoalThroughputPerSec: 100,
+			}, []int{1, 1, 2, 3, 6, 13, 31, 77},
+		},
+		{"EMAThroughputLowTraffic",
+			&dynsampler.EMAThroughput{
+				AdjustmentInterval:   1 * time.Second,
+				GoalThroughputPerSec: 100000,
+			}, []int{1, 1, 1, 1, 1, 1, 1, 1},
+		},
 	}
 
 	const (
@@ -95,7 +107,7 @@ func TestGenericSamplerBehavior(t *testing.T) {
 			for k := 0; k < nkeys; k++ {
 				// if !isCloseTo(tt.want[k], results[k]) {
 				if tt.want[k] != results[k] {
-					t.Errorf("results not close enough = for key %s (%d) want %d, got %d\n", keys[k], k, tt.want[k], results[k])
+					t.Errorf("results not = for key %s (%d) want %d, got %d\n", keys[k], k, tt.want[k], results[k])
 				}
 			}
 		})
