@@ -2,7 +2,6 @@ package dynsampler
 
 import (
 	"math"
-	"sort"
 	"sync"
 	"time"
 )
@@ -38,7 +37,7 @@ type AvgSampleWithMin struct {
 	MinEventsPerSec int
 
 	savedSampleRates map[string]int
-	currentCounts    map[string]int
+	currentCounts    map[string]float64
 
 	// haveData indicates that we have gotten a sample of traffic. Before we've
 	// gotten any samples of traffic, we should we should use the default goal
@@ -66,7 +65,7 @@ func (a *AvgSampleWithMin) Start() error {
 
 	// initialize internal variables
 	a.savedSampleRates = make(map[string]int)
-	a.currentCounts = make(map[string]int)
+	a.currentCounts = make(map[string]float64)
 	a.done = make(chan struct{})
 
 	// spin up calculator
@@ -96,7 +95,7 @@ func (a *AvgSampleWithMin) updateMaps() {
 	// make a local copy of the sample counters for calculation
 	a.lock.Lock()
 	tmpCounts := a.currentCounts
-	a.currentCounts = make(map[string]int)
+	a.currentCounts = make(map[string]float64)
 	a.lock.Unlock()
 	newSavedSampleRates := make(map[string]int)
 	// short circuit if no traffic
@@ -111,13 +110,13 @@ func (a *AvgSampleWithMin) updateMaps() {
 
 	// Goal events to send this interval is the total count of received events
 	// divided by the desired average sample rate
-	var sumEvents int
+	var sumEvents float64
 	for _, count := range tmpCounts {
 		sumEvents += count
 	}
 	goalCount := float64(sumEvents) / float64(a.GoalSampleRate)
 	// check to see if we fall below the minimum
-	if sumEvents < a.MinEventsPerSec*a.ClearFrequencySec {
+	if sumEvents < float64(a.MinEventsPerSec*a.ClearFrequencySec) {
 		// we still need to go through each key to set sample rates individually
 		for k := range tmpCounts {
 			newSavedSampleRates[k] = 1
@@ -136,51 +135,7 @@ func (a *AvgSampleWithMin) updateMaps() {
 	// Note that this can produce Inf if logSum is 0
 	goalRatio := goalCount / logSum
 
-	// must go through the keys in a fixed order to prevent rounding from changing
-	// results
-	keys := make([]string, len(tmpCounts))
-	var i int
-	for k := range tmpCounts {
-		keys[i] = k
-		i++
-	}
-	sort.Strings(keys)
-
-	// goal number of events per key is goalRatio * key count, but never less than
-	// one. If a key falls below its goal, it gets a sample rate of 1 and the
-	// extra available events get passed on down the line.
-	keysRemaining := len(tmpCounts)
-	var extra float64
-	for _, key := range keys {
-		count := float64(tmpCounts[key])
-		// take the max of 1 or my log10 share of the total
-		goalForKey := math.Max(1, math.Log10(count)*goalRatio)
-
-		// take this key's share of the extra and pass the rest along
-		extraForKey := extra / float64(keysRemaining)
-		goalForKey += extraForKey
-		extra -= extraForKey
-		keysRemaining--
-		if count <= goalForKey {
-			// there are fewer samples than the allotted number for this key. set
-			// sample rate to 1 and redistribute the unused slots for future keys
-			newSavedSampleRates[key] = 1
-			extra += goalForKey - count
-		} else {
-			// there are more samples than the allotted number. Sample this key enough
-			// to knock it under the limit (aka round up)
-			rate := math.Ceil(count / goalForKey)
-			// if counts are <= 1 we can get values for goalForKey that are +Inf
-			// and subsequent division ends up with NaN. If that's the case,
-			// fall back to 1
-			if math.IsNaN(rate) {
-				newSavedSampleRates[key] = 1
-			} else {
-				newSavedSampleRates[key] = int(rate)
-			}
-			extra += goalForKey - (count / float64(newSavedSampleRates[key]))
-		}
-	}
+	newSavedSampleRates = calculateSampleRates(goalRatio, tmpCounts)
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	a.savedSampleRates = newSavedSampleRates
@@ -203,10 +158,10 @@ func (a *AvgSampleWithMin) GetSampleRateMulti(key string, count int) int {
 	if a.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := a.currentCounts[key]; found || len(a.currentCounts) < a.MaxKeys {
-			a.currentCounts[key] += count
+			a.currentCounts[key] += float64(count)
 		}
 	} else {
-		a.currentCounts[key] += count
+		a.currentCounts[key] += float64(count)
 	}
 	if !a.haveData {
 		return a.GoalSampleRate

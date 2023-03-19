@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"sort"
 	"sync"
 	"time"
 )
@@ -204,51 +203,7 @@ func (e *EMASampleRate) updateMaps() {
 	}
 	goalRatio := goalCount / logSum
 
-	// must go through the keys in a fixed order to prevent rounding from changing
-	// results
-	keys := make([]string, len(e.movingAverage))
-	var i int
-	for k := range e.movingAverage {
-		keys[i] = k
-		i++
-	}
-	sort.Strings(keys)
-
-	// goal number of events per key is goalRatio * key count, but never less than
-	// one. If a key falls below its goal, it gets a sample rate of 1 and the
-	// extra available events get passed on down the line.
-	newSavedSampleRates := make(map[string]int)
-	keysRemaining := len(e.movingAverage)
-	var extra float64
-	for _, key := range keys {
-		count := math.Max(1, e.movingAverage[key])
-		// take the max of 1 or my log10 share of the total
-		goalForKey := math.Max(1, math.Log10(count)*goalRatio)
-		// take this key's share of the extra and pass the rest along
-		extraForKey := extra / float64(keysRemaining)
-		goalForKey += extraForKey
-		extra -= extraForKey
-		keysRemaining--
-		if count <= goalForKey {
-			// there are fewer samples than the allotted number for this key. set
-			// sample rate to 1 and redistribute the unused slots for future keys
-			newSavedSampleRates[key] = 1
-			extra += goalForKey - count
-		} else {
-			// there are more samples than the allotted number. Sample this key enough
-			// to knock it under the limit (aka round up)
-			rate := math.Ceil(count / goalForKey)
-			// if counts are <= 1 we can get values for goalForKey that are +Inf
-			// and subsequent division ends up with NaN. If that's the case,
-			// fall back to 1
-			if math.IsNaN(rate) {
-				newSavedSampleRates[key] = 1
-			} else {
-				newSavedSampleRates[key] = int(rate)
-			}
-			extra += goalForKey - (count / float64(newSavedSampleRates[key]))
-		}
-	}
+	newSavedSampleRates := calculateSampleRates(goalRatio, e.movingAverage)
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	e.savedSampleRates = newSavedSampleRates
