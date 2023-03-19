@@ -11,7 +11,7 @@ import (
 //
 // If your key space is sharded across different servers, this is a good method
 // for making sure each server sends roughly the same volume of content to
-// Honeycomb. It performs poorly when active the keyspace is very large.
+// Honeycomb. It performs poorly when the active keyspace is very large.
 //
 // GoalThroughputSec * ClearFrequencySec defines the upper limit of the number
 // of keys that can be reported and stay under the goal, but with that many
@@ -36,9 +36,13 @@ type TotalThroughput struct {
 
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
+	done             chan struct{}
 
 	lock sync.Mutex
 }
+
+// Ensure we implement the sampler interface
+var _ Sampler = (*TotalThroughput)(nil)
 
 func (t *TotalThroughput) Start() error {
 	// apply defaults
@@ -52,14 +56,26 @@ func (t *TotalThroughput) Start() error {
 	// initialize internal variables
 	t.savedSampleRates = make(map[string]int)
 	t.currentCounts = make(map[string]int)
+	t.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(t.ClearFrequencySec))
-		for range ticker.C {
-			t.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				t.updateMaps()
+			case <-t.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (t *TotalThroughput) Stop() error {
+	close(t.done)
 	return nil
 }
 
@@ -98,18 +114,24 @@ func (t *TotalThroughput) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key
+// key.
 func (t *TotalThroughput) GetSampleRate(key string) int {
+	return t.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (t *TotalThroughput) GetSampleRateMulti(key string, count int) int {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	// Enforce MaxKeys limit on the size of the map
 	if t.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := t.currentCounts[key]; found || len(t.currentCounts) < t.MaxKeys {
-			t.currentCounts[key]++
+			t.currentCounts[key] += count
 		}
 	} else {
-		t.currentCounts[key]++
+		t.currentCounts[key] += count
 	}
 	if rate, found := t.savedSampleRates[key]; found {
 		return rate

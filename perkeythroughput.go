@@ -30,9 +30,13 @@ type PerKeyThroughput struct {
 
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
+	done             chan struct{}
 
 	lock sync.Mutex
 }
+
+// Ensure we implement the sampler interface
+var _ Sampler = (*PerKeyThroughput)(nil)
 
 func (p *PerKeyThroughput) Start() error {
 	// apply defaults
@@ -46,14 +50,26 @@ func (p *PerKeyThroughput) Start() error {
 	// initialize internal variables
 	p.savedSampleRates = make(map[string]int)
 	p.currentCounts = make(map[string]int)
+	p.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(p.ClearFrequencySec))
-		for range ticker.C {
-			p.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				p.updateMaps()
+			case <-p.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (p *PerKeyThroughput) Stop() error {
+	close(p.done)
 	return nil
 }
 
@@ -89,18 +105,24 @@ func (p *PerKeyThroughput) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key
+// key.
 func (p *PerKeyThroughput) GetSampleRate(key string) int {
+	return p.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (p *PerKeyThroughput) GetSampleRateMulti(key string, count int) int {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	// Enforce MaxKeys limit on the size of the map
 	if p.MaxKeys > 0 {
-		// If a key already exists, increment it. If not, but we're under the limit, store a new key
+		// If a key already exists, add the count. If not, but we're under the limit, store a new key
 		if _, found := p.currentCounts[key]; found || len(p.currentCounts) < p.MaxKeys {
-			p.currentCounts[key]++
+			p.currentCounts[key] += count
 		}
 	} else {
-		p.currentCounts[key]++
+		p.currentCounts[key] += count
 	}
 	if rate, found := p.savedSampleRates[key]; found {
 		return rate

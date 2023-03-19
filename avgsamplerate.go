@@ -40,9 +40,13 @@ type AvgSampleRate struct {
 	// gotten any samples of traffic, we should we should use the default goal
 	// sample rate for all events instead of sampling everything at 1
 	haveData bool
+	done     chan struct{}
 
 	lock sync.Mutex
 }
+
+// Ensure we implement the sampler interface
+var _ Sampler = (*AvgSampleRate)(nil)
 
 func (a *AvgSampleRate) Start() error {
 	// apply defaults
@@ -59,14 +63,26 @@ func (a *AvgSampleRate) Start() error {
 		a.savedSampleRates = make(map[string]int)
 	}
 	a.currentCounts = make(map[string]int)
+	a.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
-		for range ticker.C {
-			a.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				a.updateMaps()
+			case <-a.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (a *AvgSampleRate) Stop() error {
+	close(a.done)
 	return nil
 }
 
@@ -155,8 +171,14 @@ func (a *AvgSampleRate) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key. Will never return zero.
+// key.
 func (a *AvgSampleRate) GetSampleRate(key string) int {
+	return a.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (a *AvgSampleRate) GetSampleRateMulti(key string, count int) int {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -164,10 +186,10 @@ func (a *AvgSampleRate) GetSampleRate(key string) int {
 	if a.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := a.currentCounts[key]; found || len(a.currentCounts) < a.MaxKeys {
-			a.currentCounts[key]++
+			a.currentCounts[key] += count
 		}
 	} else {
-		a.currentCounts[key]++
+		a.currentCounts[key] += count
 	}
 	if !a.haveData {
 		return a.GoalSampleRate

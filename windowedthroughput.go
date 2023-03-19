@@ -50,12 +50,16 @@ type WindowedThroughput struct {
 	MaxKeys int
 
 	savedSampleRates map[string]int
+	done             chan struct{}
 	countList        BlockList
 
 	indexGenerator IndexGenerator
 
 	lock sync.Mutex
 }
+
+// Ensure we implement the sampler interface
+var _ Sampler = (*WindowedThroughput)(nil)
 
 // An index generator turns timestamps into indexes. This is essentially a bucketing mechanism.
 type IndexGenerator interface {
@@ -106,6 +110,7 @@ func (t *WindowedThroughput) Start() error {
 
 	// Initialize internal variables.
 	t.savedSampleRates = make(map[string]int)
+	t.done = make(chan struct{})
 	// Initialize the index generator. Each UpdateFrequencyDuration represents a single tick of the
 	// index.
 	t.indexGenerator = &UnixSecondsIndexGenerator{
@@ -115,10 +120,21 @@ func (t *WindowedThroughput) Start() error {
 	// Spin up calculator.
 	go func() {
 		ticker := time.NewTicker(t.UpdateFrequencyDuration)
-		for range ticker.C {
-			t.updateMaps()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				t.updateMaps()
+			case <-t.done:
+				return
+			}
 		}
 	}()
+	return nil
+}
+
+func (t *WindowedThroughput) Stop() error {
+	close(t.done)
 	return nil
 }
 
@@ -156,11 +172,17 @@ func (t *WindowedThroughput) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key. Returns 0 if the key has not been seen, or MaxKeys has been reached.
+// key.
 func (t *WindowedThroughput) GetSampleRate(key string) int {
+	return t.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
 	// Insert the new key into the map.
 	current := t.indexGenerator.GetCurrentIndex()
-	err := t.countList.IncrementKey(key, current)
+	err := t.countList.IncrementKey(key, current, count)
 
 	// We've reached MaxKeys, return 0.
 	if err != nil {

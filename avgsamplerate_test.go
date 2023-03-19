@@ -307,8 +307,7 @@ func TestAvgSampleRateSaveState(t *testing.T) {
 	state, err := sampler.SaveState()
 	assert.Nil(t, err)
 
-	var newSampler Sampler
-	newSampler = &AvgSampleRate{}
+	var newSampler Sampler = &AvgSampleRate{}
 
 	err = newSampler.LoadState(state)
 	assert.Nil(t, err)

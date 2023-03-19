@@ -10,10 +10,23 @@ type Sampler interface {
 	// sampler.
 	Start() error
 
-	// GetSampleRate will return the sample rate to use for the string given. You
-	// should call it with whatever key you choose to use to partition traffic
-	// into different sample rates.
+	// Stop halts the sampler and any background goroutines
+	Stop() error
+
+	// GetSampleRate will return the sample rate to use for the given key
+	// string. You should call it with whatever key you choose to use to
+	// partition traffic into different sample rates. It assumes that you're
+	// calling it for a single item to be sampled (typically a span from a
+	// trace), and simply calls GetSampleRateMulti with 1 for the second
+	// parameter.
 	GetSampleRate(string) int
+
+	// GetSampleRateMulti will return the sample rate to use for the given key
+	// string. You should call it with whatever key you choose to use to
+	// partition traffic into different sample rates. It assumes you're calling
+	// it for a group of samples. The second parameter is the number of samples
+	// this call represents.
+	GetSampleRateMulti(string, int) int
 
 	// SaveState returns a byte array containing the state of the Sampler implementation.
 	// It can be used to persist state between process restarts.

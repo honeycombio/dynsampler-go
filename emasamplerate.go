@@ -80,12 +80,16 @@ type EMASampleRate struct {
 	// sample rate for all events instead of sampling everything at 1
 	haveData bool
 	updating bool
+	done     chan struct{}
 
 	lock sync.Mutex
 
 	// used only in tests
 	testSignalMapsDone chan struct{}
 }
+
+// Ensure we implement the sampler interface
+var _ Sampler = (*EMASampleRate)(nil)
 
 func (e *EMASampleRate) Start() error {
 	// apply defaults
@@ -117,9 +121,11 @@ func (e *EMASampleRate) Start() error {
 		e.movingAverage = make(map[string]float64)
 	}
 	e.burstSignal = make(chan struct{})
+	e.done = make(chan struct{})
 
 	go func() {
 		ticker := time.NewTicker(time.Second * time.Duration(e.AdjustmentInterval))
+		defer ticker.Stop()
 		for {
 			select {
 			case <-e.burstSignal:
@@ -130,9 +136,16 @@ func (e *EMASampleRate) Start() error {
 			case <-ticker.C:
 				e.updateMaps()
 				e.intervalCount++
+			case <-e.done:
+				return
 			}
 		}
 	}()
+	return nil
+}
+
+func (e *EMASampleRate) Stop() error {
+	close(e.done)
 	return nil
 }
 
@@ -244,8 +257,14 @@ func (e *EMASampleRate) updateMaps() {
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
-// key. Will never return zero.
+// key.
 func (e *EMASampleRate) GetSampleRate(key string) int {
+	return e.GetSampleRateMulti(key, 1)
+}
+
+// GetSampleRateMulti takes a key representing count spans and returns the
+// appropriate sample rate for that key.
+func (e *EMASampleRate) GetSampleRateMulti(key string, count int) int {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
@@ -253,12 +272,12 @@ func (e *EMASampleRate) GetSampleRate(key string) int {
 	if e.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := e.currentCounts[key]; found || len(e.currentCounts) < e.MaxKeys {
-			e.currentCounts[key]++
-			e.currentBurstSum++
+			e.currentCounts[key] += float64(count)
+			e.currentBurstSum += float64(count)
 		}
 	} else {
-		e.currentCounts[key]++
-		e.currentBurstSum++
+		e.currentCounts[key] += float64(count)
+		e.currentBurstSum += float64(count)
 	}
 
 	// Enforce the burst threshold
