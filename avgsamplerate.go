@@ -14,11 +14,11 @@ import (
 // the correct average. This method breaks down when total traffic is low
 // because it will be excessively sampled.
 //
-// Keys that occur only once within ClearFrequencySec will always have a sample
-// rate of 1. Keys that occur more frequently will be sampled on a logarithmic
-// curve. In other words, every key will be represented at least once per
-// ClearFrequencySec and more frequent keys will have their sample rate
-// increased proportionally to wind up with the goal sample rate.
+// Keys that occur only once within ClearFrequencyDuration will always have a
+// sample rate of 1. Keys that occur more frequently will be sampled on a
+// logarithmic curve. In other words, every key will be represented at least
+// once per ClearFrequencyDuration and more frequent keys will have their sample
+// rate increased proportionally to wind up with the goal sample rate.
 type AvgSampleRate struct {
 	// ClearFrequencySec is how often the counters reset in seconds; default 30.
 	// DEPRECATED -- use ClearFrequencyDuration.
@@ -34,7 +34,7 @@ type AvgSampleRate struct {
 	GoalSampleRate int
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
-	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
+	// the sample rate map within the interval defined by `ClearFrequencyDuration`. Once
 	// MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
 	MaxKeys int

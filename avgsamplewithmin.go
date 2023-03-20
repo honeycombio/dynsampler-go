@@ -14,10 +14,10 @@ import (
 // method, without the failings it shows on the low end of total traffic
 // throughput
 //
-// Keys that occur only once within ClearFrequencySec will always have a sample
+// Keys that occur only once within ClearFrequencyDuration will always have a sample
 // rate of 1. Keys that occur more frequently will be sampled on a logarithmic
 // curve. In other words, every key will be represented at least once per
-// ClearFrequencySec and more frequent keys will have their sample rate
+// ClearFrequencyDuration and more frequent keys will have their sample rate
 // increased proportionally to wind up with the goal sample rate.
 type AvgSampleWithMin struct {
 	// ClearFrequencySec is how often the counters reset in seconds; default 30.
@@ -34,7 +34,7 @@ type AvgSampleWithMin struct {
 	GoalSampleRate int
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
-	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
+	// the sample rate map within the interval defined by `ClearFrequencyDuration`. Once
 	// MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
 	MaxKeys int
@@ -86,7 +86,7 @@ func (a *AvgSampleWithMin) Start() error {
 
 	// spin up calculator
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
+		ticker := time.NewTicker(a.ClearFrequencyDuration)
 		defer ticker.Stop()
 		for {
 			select {
@@ -132,7 +132,7 @@ func (a *AvgSampleWithMin) updateMaps() {
 	}
 	goalCount := float64(sumEvents) / float64(a.GoalSampleRate)
 	// check to see if we fall below the minimum
-	if sumEvents < float64(a.MinEventsPerSec*a.ClearFrequencySec) {
+	if sumEvents < float64(a.MinEventsPerSec)*a.ClearFrequencyDuration.Seconds() {
 		// we still need to go through each key to set sample rates individually
 		for k := range tmpCounts {
 			newSavedSampleRates[k] = 1

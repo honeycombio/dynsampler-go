@@ -278,12 +278,12 @@ func TestAvgSampleWithMin_Start(t *testing.T) {
 			}
 			err := a.Start()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("AvgSampleRate error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("AvgSampleWithMin error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if err == nil {
 				defer a.Stop()
 				if tt.wantDuration != a.ClearFrequencyDuration {
-					t.Errorf("AvgSampleRate duration mismatch = want %v, got %v", tt.wantDuration, a.ClearFrequencyDuration)
+					t.Errorf("AvgSampleWithMin duration mismatch = want %v, got %v", tt.wantDuration, a.ClearFrequencyDuration)
 				}
 			}
 		})
