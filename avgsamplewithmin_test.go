@@ -12,9 +12,9 @@ import (
 
 func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 	a := &AvgSampleWithMin{
-		GoalSampleRate:    20,
-		MinEventsPerSec:   50,
-		ClearFrequencySec: 30,
+		GoalSampleRate:         20,
+		MinEventsPerSec:        50,
+		ClearFrequencyDuration: 30 * time.Second,
 	}
 	tsts := []struct {
 		inputSampleCount         map[string]float64

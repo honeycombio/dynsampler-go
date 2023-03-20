@@ -20,8 +20,8 @@ import (
 // ClearFrequencyDuration and more frequent keys will have their sample rate
 // increased proportionally to wind up with the goal sample rate.
 type AvgSampleWithMin struct {
-	// ClearFrequencySec is how often the counters reset in seconds; default 30.
 	// DEPRECATED -- use ClearFrequencyDuration.
+	// ClearFrequencySec is how often the counters reset in seconds.
 	ClearFrequencySec int
 
 	// ClearFrequencyDuration is how often the counters reset as a Duration.

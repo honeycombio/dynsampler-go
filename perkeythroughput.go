@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -14,8 +15,14 @@ import (
 // through. In other words, if capturing a minimum amount of traffic per key is
 // important but beyond that doesn't matter much, this is the best method.
 type PerKeyThroughput struct {
-	// ClearFrequency is how often the counters reset in seconds; default 30
+	// DEPRECATED -- use ClearFrequencyDuration.
+	// ClearFrequencySec is how often the counters reset in seconds.
 	ClearFrequencySec int
+
+	// ClearFrequencyDuration is how often the counters reset as a Duration.
+	// Note that either this or ClearFrequencySec can be specified, but not both.
+	// If neither one is set, the default is 30s.
+	ClearFrequencyDuration time.Duration
 
 	// PerKeyThroughputPerSec is the target number of events to send per second
 	// per key. Sample rates are generated on a per key basis to squash the
@@ -23,7 +30,7 @@ type PerKeyThroughput struct {
 	PerKeyThroughputPerSec int
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
-	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
+	// the sample rate map within the interval defined by `ClearFrequencyDuration`. Once
 	// MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
 	MaxKeys int
@@ -40,9 +47,18 @@ var _ Sampler = (*PerKeyThroughput)(nil)
 
 func (p *PerKeyThroughput) Start() error {
 	// apply defaults
-	if p.ClearFrequencySec == 0 {
-		p.ClearFrequencySec = 30
+	if p.ClearFrequencyDuration != 0 && p.ClearFrequencySec != 0 {
+		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
+
+	if p.ClearFrequencyDuration == 0 && p.ClearFrequencySec == 0 {
+		p.ClearFrequencyDuration = 30 * time.Second
+	} else {
+		if p.ClearFrequencySec != 0 {
+			p.ClearFrequencyDuration = time.Duration(p.ClearFrequencySec) * time.Second
+		}
+	}
+
 	if p.PerKeyThroughputPerSec == 0 {
 		p.PerKeyThroughputPerSec = 10
 	}
@@ -54,7 +70,7 @@ func (p *PerKeyThroughput) Start() error {
 
 	// spin up calculator
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(p.ClearFrequencySec))
+		ticker := time.NewTicker(p.ClearFrequencyDuration)
 		defer ticker.Stop()
 		for {
 			select {
@@ -90,7 +106,7 @@ func (p *PerKeyThroughput) updateMaps() {
 		p.savedSampleRates = make(map[string]int)
 		return
 	}
-	actualPerKeyRate := p.PerKeyThroughputPerSec * p.ClearFrequencySec
+	actualPerKeyRate := p.PerKeyThroughputPerSec * int(p.ClearFrequencyDuration.Seconds())
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
 	newSavedSampleRates := make(map[string]int)

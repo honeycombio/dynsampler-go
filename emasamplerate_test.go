@@ -294,7 +294,7 @@ func TestEMAAgesOutSmallValues(t *testing.T) {
 
 func TestEMABurstDetection(t *testing.T) {
 	// Set the adjustment interval very high so that we never run the regular interval
-	e := &EMASampleRate{AdjustmentInterval: 3600}
+	e := &EMASampleRate{AdjustmentIntervalDuration: 1 * time.Hour}
 	err := e.Start()
 	assert.Nil(t, err)
 
@@ -326,7 +326,7 @@ func TestEMABurstDetection(t *testing.T) {
 }
 
 func TestEMAUpdateMapsRace(t *testing.T) {
-	e := &EMASampleRate{AdjustmentInterval: 3600}
+	e := &EMASampleRate{AdjustmentIntervalDuration: 1 * time.Hour}
 	e.testSignalMapsDone = make(chan struct{}, 1000)
 	err := e.Start()
 	assert.Nil(t, err)

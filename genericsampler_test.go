@@ -21,12 +21,12 @@ func TestGenericSamplerBehavior(t *testing.T) {
 	}{
 		{"AvgSampleRate",
 			&dynsampler.AvgSampleRate{
-				ClearFrequencySec: 1,
+				ClearFrequencyDuration: 1 * time.Second,
 			}, []int{1, 1, 1, 1, 2, 4, 9, 21},
 		},
 		{"AvgSampleWithMin",
 			&dynsampler.AvgSampleWithMin{
-				ClearFrequencySec: 1,
+				ClearFrequencyDuration: 1 * time.Second,
 			}, []int{1, 1, 1, 1, 1, 2, 4, 9, 21},
 		},
 		{"EMASampler",
@@ -36,18 +36,18 @@ func TestGenericSamplerBehavior(t *testing.T) {
 		},
 		{"OnlyOnce",
 			&dynsampler.OnlyOnce{
-				ClearFrequencySec: 1,
+				ClearFrequencyDuration: 1 * time.Second,
 			}, []int{1, 1, 1, 1, 1, 1, 1, 1},
 		},
 		{"PerKeyThroughput",
 			&dynsampler.PerKeyThroughput{
-				ClearFrequencySec: 1,
+				ClearFrequencyDuration: 1 * time.Second,
 			}, []int{1, 1, 1, 2, 8, 24, 72, 218},
 		},
 		{"TotalThroughput",
 			&dynsampler.TotalThroughput{
-				ClearFrequencySec:    1,
-				GoalThroughputPerSec: 5,
+				ClearFrequencyDuration: 1 * time.Second,
+				GoalThroughputPerSec:   5,
 			}, []int{1, 3, 9, 27, 81, 243, 729, 2187},
 		},
 		{"WindowedThroughput",

@@ -29,12 +29,13 @@ import (
 // given window and more frequent keys will have their sample rate
 // increased proportionally to wind up with the goal sample rate.
 type EMASampleRate struct {
+	// DEPRECATED -- use AdjustmentIntervalDuration
 	// AdjustmentInterval defines how often (in seconds) we adjust the moving average from
 	// recent observations.
-	// DEPRECATED -- use AdjustmentIntervalDuration
 	AdjustmentInterval int
 
-	// AdjustmentIntervalDuration is how often the counters reset as a Duration.
+	// AdjustmentIntervalDuration is how often we adjust the moving average from
+	// recent observations.
 	// Note that either this or AdjustmentInterval can be specified, but not both.
 	// If neither one is set, the default is 15s.
 	AdjustmentIntervalDuration time.Duration
