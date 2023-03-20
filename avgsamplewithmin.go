@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -19,8 +20,14 @@ import (
 // ClearFrequencySec and more frequent keys will have their sample rate
 // increased proportionally to wind up with the goal sample rate.
 type AvgSampleWithMin struct {
-	// ClearFrequencySec is how often the counters reset in seconds; default 30
+	// ClearFrequencySec is how often the counters reset in seconds; default 30.
+	// DEPRECATED -- use ClearFrequencyDuration.
 	ClearFrequencySec int
+
+	// ClearFrequencyDuration is how often the counters reset as a Duration.
+	// Note that either this or ClearFrequencySec can be specified, but not both.
+	// If neither one is set, the default is 30s.
+	ClearFrequencyDuration time.Duration
 
 	// GoalSampleRate is the average sample rate we're aiming for, across all
 	// events. Default 10
@@ -53,9 +60,18 @@ var _ Sampler = (*AvgSampleWithMin)(nil)
 
 func (a *AvgSampleWithMin) Start() error {
 	// apply defaults
-	if a.ClearFrequencySec == 0 {
-		a.ClearFrequencySec = 30
+	if a.ClearFrequencyDuration != 0 && a.ClearFrequencySec != 0 {
+		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
+
+	if a.ClearFrequencyDuration == 0 && a.ClearFrequencySec == 0 {
+		a.ClearFrequencyDuration = 30 * time.Second
+	} else {
+		if a.ClearFrequencySec != 0 {
+			a.ClearFrequencyDuration = time.Duration(a.ClearFrequencySec) * time.Second
+		}
+	}
+
 	if a.GoalSampleRate == 0 {
 		a.GoalSampleRate = 10
 	}
