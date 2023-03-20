@@ -8,16 +8,11 @@ import (
 	"github.com/honeycombio/dynsampler-go"
 )
 
-// we'll accept 2% slop
-func isCloseTo(want, got int) bool {
-	acceptableVariance := (want * 2) / 100
-	return got >= want-acceptableVariance && got <= want+acceptableVariance
-}
-
 // If given consistent data, the samplers very quickly settle to their target
-// rates, so this test specifically hands different samplers identical data each
-// time and expects them to find the right values quickly. This is a slightly
-// higher-level test that only depends on the public interface of samplers.
+// rates and we can expect exact results. This test specifically hands different
+// samplers identical data each time and expects them to find the right values
+// quickly. This is a slightly higher-level test that only depends on the public
+// interface of samplers.
 func TestGenericSamplerBehavior(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -98,7 +93,8 @@ func TestGenericSamplerBehavior(t *testing.T) {
 			s.Stop()
 
 			for k := 0; k < nkeys; k++ {
-				if !isCloseTo(tt.want[k], results[k]) {
+				// if !isCloseTo(tt.want[k], results[k]) {
+				if tt.want[k] != results[k] {
 					t.Errorf("results not close enough = for key %s (%d) want %d, got %d\n", keys[k], k, tt.want[k], results[k])
 				}
 			}

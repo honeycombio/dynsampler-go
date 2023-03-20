@@ -18,11 +18,11 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 		GoalSampleRate: 20,
 	}
 	tsts := []struct {
-		inputSampleCount         map[string]int
+		inputSampleCount         map[string]float64
 		expectedSavedSampleRates map[string]int
 	}{
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1,
 				"two":   1,
 				"three": 2,
@@ -48,7 +48,7 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1,
 				"two":   1,
 				"three": 2,
@@ -72,7 +72,7 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1,
 				"two":   1,
 				"three": 2,
@@ -88,7 +88,7 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1000,
 				"two":   1000,
 				"three": 2000,
@@ -104,7 +104,7 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   6000,
 				"two":   6000,
 				"three": 6000,
@@ -120,7 +120,7 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one": 12000,
 			},
 			map[string]int{
@@ -128,11 +128,11 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{},
+			map[string]float64{},
 			map[string]int{},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":       10,
 				"two":       1,
 				"three":     1,
@@ -189,18 +189,18 @@ func TestAvgSampleUpdateMaps(t *testing.T) {
 func TestAvgSampleGetSampleRateStartup(t *testing.T) {
 	a := &AvgSampleRate{
 		GoalSampleRate: 10,
-		currentCounts:  map[string]int{},
+		currentCounts:  map[string]float64{},
 	}
 	rate := a.GetSampleRate("key")
 	assert.Equal(t, rate, 10)
 	// and the counters still get bumped
-	assert.Equal(t, a.currentCounts["key"], 1)
+	assert.Equal(t, a.currentCounts["key"], 1.0)
 }
 
 func TestAvgSampleRace(t *testing.T) {
 	a := &AvgSampleRate{
 		GoalSampleRate:   2,
-		currentCounts:    map[string]int{},
+		currentCounts:    map[string]float64{},
 		savedSampleRates: map[string]int{},
 		haveData:         true,
 	}
@@ -234,7 +234,7 @@ func TestAvgSampleRateGetSampleRate(t *testing.T) {
 	a := &AvgSampleRate{
 		haveData: true,
 	}
-	a.currentCounts = map[string]int{
+	a.currentCounts = map[string]float64{
 		"one": 5,
 		"two": 8,
 	}
@@ -246,7 +246,7 @@ func TestAvgSampleRateGetSampleRate(t *testing.T) {
 	tsts := []struct {
 		inputKey                   string
 		expectedSampleRate         int
-		expectedCurrentCountForKey int
+		expectedCurrentCountForKey float64
 	}{
 		{"one", 10, 6},
 		{"two", 1, 9},
@@ -267,7 +267,7 @@ func TestAvgSampleRateMaxKeys(t *testing.T) {
 	a := &AvgSampleRate{
 		MaxKeys: 3,
 	}
-	a.currentCounts = map[string]int{
+	a.currentCounts = map[string]float64{
 		"one": 1,
 		"two": 1,
 	}
@@ -276,7 +276,7 @@ func TestAvgSampleRateMaxKeys(t *testing.T) {
 	// with MaxKeys 3, we are under the key limit, so three should get added
 	a.GetSampleRate("three")
 	assert.Equal(t, 3, len(a.currentCounts))
-	assert.Equal(t, 1, a.currentCounts["three"])
+	assert.Equal(t, 1., a.currentCounts["three"])
 	// Now we're at 3 keys - four should not be added
 	a.GetSampleRate("four")
 	assert.Equal(t, 3, len(a.currentCounts))
@@ -285,7 +285,7 @@ func TestAvgSampleRateMaxKeys(t *testing.T) {
 	// We should still support bumping counts for existing keys
 	a.GetSampleRate("one")
 	assert.Equal(t, 3, len(a.currentCounts))
-	assert.Equal(t, 2, a.currentCounts["one"])
+	assert.Equal(t, 2., a.currentCounts["one"])
 }
 
 func TestAvgSampleRateSaveState(t *testing.T) {
@@ -334,7 +334,7 @@ func TestAvgSampleRateHitsTargetRate(t *testing.T) {
 		toleranceLower := float64(rate) - tolerance
 
 		for _, keyCount := range testKeyCount {
-			sampler := &AvgSampleRate{GoalSampleRate: rate, currentCounts: make(map[string]int)}
+			sampler := &AvgSampleRate{GoalSampleRate: rate, currentCounts: make(map[string]float64)}
 
 			// build a consistent set of keys to use
 			keys := make([]string, keyCount)
@@ -347,7 +347,7 @@ func TestAvgSampleRateHitsTargetRate(t *testing.T) {
 				// so that count ranges are reasonable (i.e. they don't go from 1 to 10000 back to 100)
 				base := math.Pow10(i%3 + 1)
 				count := float64(((i%10)+1))*base + float64(mrand.Intn(int(base)))
-				sampler.currentCounts[key] = int(count)
+				sampler.currentCounts[key] = count
 			}
 
 			// build an initial set of sample rates so we don't just return the target rate
@@ -390,7 +390,7 @@ func TestAvgSampleUpdateMapsSparseCounts(t *testing.T) {
 	a.savedSampleRates = make(map[string]int)
 
 	for i := 0; i <= 100; i++ {
-		input := make(map[string]int)
+		input := make(map[string]float64)
 		// simulate steady stream of input from one key
 		input["largest_count"] = 20
 		// sporadic keys with single counts that come and go with each interval

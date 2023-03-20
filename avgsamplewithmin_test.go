@@ -16,11 +16,11 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 		ClearFrequencySec: 30,
 	}
 	tsts := []struct {
-		inputSampleCount         map[string]int
+		inputSampleCount         map[string]float64
 		expectedSavedSampleRates map[string]int
 	}{
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1,
 				"two":   1,
 				"three": 2,
@@ -46,7 +46,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1,
 				"two":   1,
 				"three": 2,
@@ -70,7 +70,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1,
 				"two":   1,
 				"three": 2,
@@ -86,7 +86,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one": 1,
 			},
 			map[string]int{
@@ -94,7 +94,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one": 8,
 			},
 			map[string]int{
@@ -102,7 +102,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one": 12000,
 			},
 			map[string]int{
@@ -110,7 +110,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   1000,
 				"two":   1000,
 				"three": 2000,
@@ -126,7 +126,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{
+			map[string]float64{
 				"one":   6000,
 				"two":   6000,
 				"three": 6000,
@@ -142,7 +142,7 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 			},
 		},
 		{
-			map[string]int{},
+			map[string]float64{},
 			map[string]int{},
 		},
 	}
@@ -157,19 +157,19 @@ func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 func TestAvgSampleWithMinGetSampleRateStartup(t *testing.T) {
 	a := &AvgSampleWithMin{
 		GoalSampleRate: 10,
-		currentCounts:  map[string]int{},
+		currentCounts:  map[string]float64{},
 	}
 	rate := a.GetSampleRate("key")
 	assert.Equal(t, rate, 10)
 	// and the counters still get bumped
-	assert.Equal(t, a.currentCounts["key"], 1)
+	assert.Equal(t, a.currentCounts["key"], 1.)
 }
 
 func TestAvgSampleWithMinGetSampleRate(t *testing.T) {
 	a := &AvgSampleWithMin{
 		haveData: true,
 	}
-	a.currentCounts = map[string]int{
+	a.currentCounts = map[string]float64{
 		"one": 5,
 		"two": 8,
 	}
@@ -181,7 +181,7 @@ func TestAvgSampleWithMinGetSampleRate(t *testing.T) {
 	tsts := []struct {
 		inputKey                   string
 		expectedSampleRate         int
-		expectedCurrentCountForKey int
+		expectedCurrentCountForKey float64
 	}{
 		{"one", 10, 6},
 		{"two", 1, 9},
@@ -201,7 +201,7 @@ func TestAvgSampleWithMinGetSampleRate(t *testing.T) {
 func TestAvgSampleWithMinRace(t *testing.T) {
 	a := &AvgSampleWithMin{
 		GoalSampleRate:   2,
-		currentCounts:    map[string]int{},
+		currentCounts:    map[string]float64{},
 		savedSampleRates: map[string]int{},
 		haveData:         true,
 	}
@@ -235,7 +235,7 @@ func TestAvgSampleWithMinMaxKeys(t *testing.T) {
 	a := &AvgSampleWithMin{
 		MaxKeys: 3,
 	}
-	a.currentCounts = map[string]int{
+	a.currentCounts = map[string]float64{
 		"one": 1,
 		"two": 1,
 	}
@@ -244,7 +244,7 @@ func TestAvgSampleWithMinMaxKeys(t *testing.T) {
 	// with MaxKeys 3, we are under the key limit, so three should get added
 	a.GetSampleRate("three")
 	assert.Equal(t, 3, len(a.currentCounts))
-	assert.Equal(t, 1, a.currentCounts["three"])
+	assert.Equal(t, 1., a.currentCounts["three"])
 	// Now we're at 3 keys - four should not be added
 	a.GetSampleRate("four")
 	assert.Equal(t, 3, len(a.currentCounts))
@@ -253,5 +253,5 @@ func TestAvgSampleWithMinMaxKeys(t *testing.T) {
 	// We should still support bumping counts for existing keys
 	a.GetSampleRate("one")
 	assert.Equal(t, 3, len(a.currentCounts))
-	assert.Equal(t, 2, a.currentCounts["one"])
+	assert.Equal(t, 2., a.currentCounts["one"])
 }
