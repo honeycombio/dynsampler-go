@@ -11,7 +11,7 @@ import (
 
 // EMAThroughput implements Sampler and attempts to achieve a given throughput
 // rate, weighting rare traffic and frequent traffic differently so as to end up
-// with the correct value.
+// with the the desired throughput.
 //
 // Based on the EMASampleRate implementation, EMAThroughput differs in that
 // instead of trying to achieve a given sample rate, it tries to reach a given
@@ -22,7 +22,7 @@ import (
 // seen per key, and adjusts this average at regular intervals. The weight
 // applied to more recent intervals is defined by `weight`, a number between (0,
 // 1) - larger values weight the average more toward recent observations. In
-// other words, a larger weight will cause sample rates more quickly adapt to
+// other words, a larger weight will cause sample rates to more quickly adapt to
 // traffic patterns, while a smaller weight will result in sample rates that are
 // less sensitive to bursts or drops in traffic and thus more consistent over
 // time.
@@ -59,6 +59,7 @@ type EMAThroughput struct {
 	// MaxKeys, if greater than 0, limits the number of distinct keys tracked in EMA.
 	// Once MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
+	// Defaults to 0
 	MaxKeys int
 
 	// AgeOutValue indicates the threshold for removing keys from the EMA. The EMA of any key will approach 0
