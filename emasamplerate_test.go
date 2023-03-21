@@ -294,7 +294,7 @@ func TestEMAAgesOutSmallValues(t *testing.T) {
 
 func TestEMABurstDetection(t *testing.T) {
 	// Set the adjustment interval very high so that we never run the regular interval
-	e := &EMASampleRate{AdjustmentInterval: 3600}
+	e := &EMASampleRate{AdjustmentIntervalDuration: 1 * time.Hour}
 	err := e.Start()
 	assert.Nil(t, err)
 
@@ -326,7 +326,7 @@ func TestEMABurstDetection(t *testing.T) {
 }
 
 func TestEMAUpdateMapsRace(t *testing.T) {
-	e := &EMASampleRate{AdjustmentInterval: 3600}
+	e := &EMASampleRate{AdjustmentIntervalDuration: 1 * time.Hour}
 	e.testSignalMapsDone = make(chan struct{}, 1000)
 	err := e.Start()
 	assert.Nil(t, err)
@@ -498,5 +498,38 @@ func TestEMASampleRateMultiHitsTargetRate(t *testing.T) {
 
 			assert.True(t, success/100.0 >= 0.95, "target rate test %d with key count %d failed with success rate of only %f", rate, keyCount, success/100.0)
 		}
+	}
+}
+
+func TestEMASampleRate_Start(t *testing.T) {
+	tests := []struct {
+		name                       string
+		AdjustmentInterval         int
+		AdjustmentIntervalDuration time.Duration
+		wantDuration               time.Duration
+		wantErr                    bool
+	}{
+		{"sec only", 2, 0, 2 * time.Second, false},
+		{"dur only", 0, 1003 * time.Millisecond, 1003 * time.Millisecond, false},
+		{"default", 0, 0, 15 * time.Second, false},
+		{"both", 2, 2 * time.Second, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &EMASampleRate{
+				AdjustmentInterval:         tt.AdjustmentInterval,
+				AdjustmentIntervalDuration: tt.AdjustmentIntervalDuration,
+			}
+			err := a.Start()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("EMASampleRate error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil {
+				defer a.Stop()
+				if tt.wantDuration != a.AdjustmentIntervalDuration {
+					t.Errorf("EMASampleRate duration mismatch = want %v, got %v", tt.wantDuration, a.AdjustmentIntervalDuration)
+				}
+			}
+		})
 	}
 }

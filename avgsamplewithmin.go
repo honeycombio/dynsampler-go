@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -13,21 +14,27 @@ import (
 // method, without the failings it shows on the low end of total traffic
 // throughput
 //
-// Keys that occur only once within ClearFrequencySec will always have a sample
+// Keys that occur only once within ClearFrequencyDuration will always have a sample
 // rate of 1. Keys that occur more frequently will be sampled on a logarithmic
 // curve. In other words, every key will be represented at least once per
-// ClearFrequencySec and more frequent keys will have their sample rate
+// ClearFrequencyDuration and more frequent keys will have their sample rate
 // increased proportionally to wind up with the goal sample rate.
 type AvgSampleWithMin struct {
-	// ClearFrequencySec is how often the counters reset in seconds; default 30
+	// DEPRECATED -- use ClearFrequencyDuration.
+	// ClearFrequencySec is how often the counters reset in seconds.
 	ClearFrequencySec int
+
+	// ClearFrequencyDuration is how often the counters reset as a Duration.
+	// Note that either this or ClearFrequencySec can be specified, but not both.
+	// If neither one is set, the default is 30s.
+	ClearFrequencyDuration time.Duration
 
 	// GoalSampleRate is the average sample rate we're aiming for, across all
 	// events. Default 10
 	GoalSampleRate int
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
-	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
+	// the sample rate map within the interval defined by `ClearFrequencyDuration`. Once
 	// MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
 	MaxKeys int
@@ -53,9 +60,16 @@ var _ Sampler = (*AvgSampleWithMin)(nil)
 
 func (a *AvgSampleWithMin) Start() error {
 	// apply defaults
-	if a.ClearFrequencySec == 0 {
-		a.ClearFrequencySec = 30
+	if a.ClearFrequencyDuration != 0 && a.ClearFrequencySec != 0 {
+		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
+
+	if a.ClearFrequencyDuration == 0 && a.ClearFrequencySec == 0 {
+		a.ClearFrequencyDuration = 30 * time.Second
+	} else if a.ClearFrequencySec != 0 {
+		a.ClearFrequencyDuration = time.Duration(a.ClearFrequencySec) * time.Second
+	}
+
 	if a.GoalSampleRate == 0 {
 		a.GoalSampleRate = 10
 	}
@@ -70,7 +84,7 @@ func (a *AvgSampleWithMin) Start() error {
 
 	// spin up calculator
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
+		ticker := time.NewTicker(a.ClearFrequencyDuration)
 		defer ticker.Stop()
 		for {
 			select {
@@ -116,7 +130,7 @@ func (a *AvgSampleWithMin) updateMaps() {
 	}
 	goalCount := float64(sumEvents) / float64(a.GoalSampleRate)
 	// check to see if we fall below the minimum
-	if sumEvents < float64(a.MinEventsPerSec*a.ClearFrequencySec) {
+	if sumEvents < float64(a.MinEventsPerSec)*a.ClearFrequencyDuration.Seconds() {
 		// we still need to go through each key to set sample rates individually
 		for k := range tmpCounts {
 			newSavedSampleRates[k] = 1

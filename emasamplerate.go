@@ -3,6 +3,7 @@ package dynsampler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -28,9 +29,16 @@ import (
 // given window and more frequent keys will have their sample rate
 // increased proportionally to wind up with the goal sample rate.
 type EMASampleRate struct {
+	// DEPRECATED -- use AdjustmentIntervalDuration
 	// AdjustmentInterval defines how often (in seconds) we adjust the moving average from
-	// recent observations. Default 15s
+	// recent observations.
 	AdjustmentInterval int
+
+	// AdjustmentIntervalDuration is how often we adjust the moving average from
+	// recent observations.
+	// Note that either this or AdjustmentInterval can be specified, but not both.
+	// If neither one is set, the default is 15s.
+	AdjustmentIntervalDuration time.Duration
 
 	// Weight is a value between (0, 1) indicating the weighting factor used to adjust
 	// the EMA. With larger values, newer data will influence the average more, and older
@@ -57,7 +65,7 @@ type EMASampleRate struct {
 
 	// BurstMultiple, if set, is multiplied by the sum of the running average of counts to define
 	// the burst detection threshold. If total counts observed for a given interval exceed the threshold
-	// EMA is updated immediately, rather than waiting on the AdjustmentInterval.
+	// EMA is updated immediately, rather than waiting on the AdjustmentIntervalDuration.
 	// Defaults to 2; negative value disables. With a default of 2, if your traffic suddenly doubles,
 	// burst detection will kick in.
 	BurstMultiple float64
@@ -92,9 +100,16 @@ var _ Sampler = (*EMASampleRate)(nil)
 
 func (e *EMASampleRate) Start() error {
 	// apply defaults
-	if e.AdjustmentInterval == 0 {
-		e.AdjustmentInterval = 15
+	if e.AdjustmentIntervalDuration != 0 && e.AdjustmentInterval != 0 {
+		return fmt.Errorf("the AdjustmentInterval configuration value is deprecated; use only AdjustmentIntervalDuration")
 	}
+
+	if e.AdjustmentIntervalDuration == 0 && e.AdjustmentInterval == 0 {
+		e.AdjustmentIntervalDuration = 15 * time.Second
+	} else if e.AdjustmentInterval != 0 {
+		e.AdjustmentIntervalDuration = time.Duration(e.AdjustmentInterval) * time.Second
+	}
+
 	if e.GoalSampleRate == 0 {
 		e.GoalSampleRate = 10
 	}
@@ -123,14 +138,14 @@ func (e *EMASampleRate) Start() error {
 	e.done = make(chan struct{})
 
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(e.AdjustmentInterval))
+		ticker := time.NewTicker(e.AdjustmentIntervalDuration)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-e.burstSignal:
 				// reset ticker when we get a burst
 				ticker.Stop()
-				ticker = time.NewTicker(time.Second * time.Duration(e.AdjustmentInterval))
+				ticker = time.NewTicker(e.AdjustmentIntervalDuration)
 				e.updateMaps()
 			case <-ticker.C:
 				e.updateMaps()

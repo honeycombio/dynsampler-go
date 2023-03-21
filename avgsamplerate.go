@@ -3,6 +3,7 @@ package dynsampler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -13,21 +14,27 @@ import (
 // the correct average. This method breaks down when total traffic is low
 // because it will be excessively sampled.
 //
-// Keys that occur only once within ClearFrequencySec will always have a sample
-// rate of 1. Keys that occur more frequently will be sampled on a logarithmic
-// curve. In other words, every key will be represented at least once per
-// ClearFrequencySec and more frequent keys will have their sample rate
-// increased proportionally to wind up with the goal sample rate.
+// Keys that occur only once within ClearFrequencyDuration will always have a
+// sample rate of 1. Keys that occur more frequently will be sampled on a
+// logarithmic curve. In other words, every key will be represented at least
+// once per ClearFrequencyDuration and more frequent keys will have their sample
+// rate increased proportionally to wind up with the goal sample rate.
 type AvgSampleRate struct {
-	// ClearFrequencySec is how often the counters reset in seconds; default 30
+	// DEPRECATED -- use ClearFrequencyDuration.
+	// ClearFrequencySec is how often the counters reset in seconds.
 	ClearFrequencySec int
+
+	// ClearFrequencyDuration is how often the counters reset as a Duration.
+	// Note that either this or ClearFrequencySec can be specified, but not both.
+	// If neither one is set, the default is 30s.
+	ClearFrequencyDuration time.Duration
 
 	// GoalSampleRate is the average sample rate we're aiming for, across all
 	// events. Default 10
 	GoalSampleRate int
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
-	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
+	// the sample rate map within the interval defined by `ClearFrequencyDuration`. Once
 	// MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
 	MaxKeys int
@@ -49,9 +56,16 @@ var _ Sampler = (*AvgSampleRate)(nil)
 
 func (a *AvgSampleRate) Start() error {
 	// apply defaults
-	if a.ClearFrequencySec == 0 {
-		a.ClearFrequencySec = 30
+	if a.ClearFrequencyDuration != 0 && a.ClearFrequencySec != 0 {
+		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
+
+	if a.ClearFrequencyDuration == 0 && a.ClearFrequencySec == 0 {
+		a.ClearFrequencyDuration = 30 * time.Second
+	} else if a.ClearFrequencySec != 0 {
+		a.ClearFrequencyDuration = time.Duration(a.ClearFrequencySec) * time.Second
+	}
+
 	if a.GoalSampleRate == 0 {
 		a.GoalSampleRate = 10
 	}
@@ -66,7 +80,7 @@ func (a *AvgSampleRate) Start() error {
 
 	// spin up calculator
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(a.ClearFrequencySec))
+		ticker := time.NewTicker(a.ClearFrequencyDuration)
 		defer ticker.Stop()
 		for {
 			select {
