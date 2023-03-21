@@ -59,10 +59,8 @@ func (t *TotalThroughput) Start() error {
 
 	if t.ClearFrequencyDuration == 0 && t.ClearFrequencySec == 0 {
 		t.ClearFrequencyDuration = 30 * time.Second
-	} else {
-		if t.ClearFrequencySec != 0 {
-			t.ClearFrequencyDuration = time.Duration(t.ClearFrequencySec) * time.Second
-		}
+	} else if t.ClearFrequencySec != 0 {
+		t.ClearFrequencyDuration = time.Duration(t.ClearFrequencySec) * time.Second
 	}
 
 	if t.GoalThroughputPerSec == 0 {

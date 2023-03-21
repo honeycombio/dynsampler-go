@@ -106,10 +106,8 @@ func (e *EMASampleRate) Start() error {
 
 	if e.AdjustmentIntervalDuration == 0 && e.AdjustmentInterval == 0 {
 		e.AdjustmentIntervalDuration = 15 * time.Second
-	} else {
-		if e.AdjustmentInterval != 0 {
-			e.AdjustmentIntervalDuration = time.Duration(e.AdjustmentInterval) * time.Second
-		}
+	} else if e.AdjustmentInterval != 0 {
+		e.AdjustmentIntervalDuration = time.Duration(e.AdjustmentInterval) * time.Second
 	}
 
 	if e.GoalSampleRate == 0 {

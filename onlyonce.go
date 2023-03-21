@@ -47,10 +47,8 @@ func (o *OnlyOnce) Start() error {
 
 	if o.ClearFrequencyDuration == 0 && o.ClearFrequencySec == 0 {
 		o.ClearFrequencyDuration = 30 * time.Second
-	} else {
-		if o.ClearFrequencySec != 0 {
-			o.ClearFrequencyDuration = time.Duration(o.ClearFrequencySec) * time.Second
-		}
+	} else if o.ClearFrequencySec != 0 {
+		o.ClearFrequencyDuration = time.Duration(o.ClearFrequencySec) * time.Second
 	}
 
 	// if it's negative, we don't even start something

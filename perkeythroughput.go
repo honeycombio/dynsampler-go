@@ -53,10 +53,8 @@ func (p *PerKeyThroughput) Start() error {
 
 	if p.ClearFrequencyDuration == 0 && p.ClearFrequencySec == 0 {
 		p.ClearFrequencyDuration = 30 * time.Second
-	} else {
-		if p.ClearFrequencySec != 0 {
-			p.ClearFrequencyDuration = time.Duration(p.ClearFrequencySec) * time.Second
-		}
+	} else if p.ClearFrequencySec != 0 {
+		p.ClearFrequencyDuration = time.Duration(p.ClearFrequencySec) * time.Second
 	}
 
 	if p.PerKeyThroughputPerSec == 0 {

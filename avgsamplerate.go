@@ -62,10 +62,8 @@ func (a *AvgSampleRate) Start() error {
 
 	if a.ClearFrequencyDuration == 0 && a.ClearFrequencySec == 0 {
 		a.ClearFrequencyDuration = 30 * time.Second
-	} else {
-		if a.ClearFrequencySec != 0 {
-			a.ClearFrequencyDuration = time.Duration(a.ClearFrequencySec) * time.Second
-		}
+	} else if a.ClearFrequencySec != 0 {
+		a.ClearFrequencyDuration = time.Duration(a.ClearFrequencySec) * time.Second
 	}
 
 	if a.GoalSampleRate == 0 {
