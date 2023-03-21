@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -13,15 +14,21 @@ import (
 // for making sure each server sends roughly the same volume of content to
 // Honeycomb. It performs poorly when the active keyspace is very large.
 //
-// GoalThroughputSec * ClearFrequencySec defines the upper limit of the number
-// of keys that can be reported and stay under the goal, but with that many
-// keys, you'll only get one event per key per ClearFrequencySec, which is very
-// coarse. You should aim for at least 1 event per key per sec to 1 event per
-// key per 10sec to get reasonable data. In other words, the number of active
-// keys should be less than 10*GoalThroughputSec.
+// GoalThroughputSec * ClearFrequencyDuration (in seconds) defines the upper
+// limit of the number of keys that can be reported and stay under the goal, but
+// with that many keys, you'll only get one event per key per ClearFrequencySec,
+// which is very coarse. You should aim for at least 1 event per key per sec to
+// 1 event per key per 10sec to get reasonable data. In other words, the number
+// of active keys should be less than 10*GoalThroughputSec.
 type TotalThroughput struct {
-	// ClearFrequency is how often the counters reset in seconds; default 30
+	// DEPRECATED -- use ClearFrequencyDuration.
+	// ClearFrequencySec is how often the counters reset in seconds.
 	ClearFrequencySec int
+
+	// ClearFrequencyDuration is how often the counters reset as a Duration.
+	// Note that either this or ClearFrequencySec can be specified, but not both.
+	// If neither one is set, the default is 30s.
+	ClearFrequencyDuration time.Duration
 
 	// GoalThroughputPerSec is the target number of events to send per second.
 	// Sample rates are generated to squash the total throughput down to match the
@@ -46,9 +53,16 @@ var _ Sampler = (*TotalThroughput)(nil)
 
 func (t *TotalThroughput) Start() error {
 	// apply defaults
-	if t.ClearFrequencySec == 0 {
-		t.ClearFrequencySec = 30
+	if t.ClearFrequencyDuration != 0 && t.ClearFrequencySec != 0 {
+		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
+
+	if t.ClearFrequencyDuration == 0 && t.ClearFrequencySec == 0 {
+		t.ClearFrequencyDuration = 30 * time.Second
+	} else if t.ClearFrequencySec != 0 {
+		t.ClearFrequencyDuration = time.Duration(t.ClearFrequencySec) * time.Second
+	}
+
 	if t.GoalThroughputPerSec == 0 {
 		t.GoalThroughputPerSec = 100
 	}
@@ -60,7 +74,7 @@ func (t *TotalThroughput) Start() error {
 
 	// spin up calculator
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(t.ClearFrequencySec))
+		ticker := time.NewTicker(t.ClearFrequencyDuration)
 		defer ticker.Stop()
 		for {
 			select {
@@ -96,10 +110,10 @@ func (t *TotalThroughput) updateMaps() {
 		t.savedSampleRates = make(map[string]int)
 		return
 	}
-	// figure out our target throughput per key over ClearFrequencySec
-	totalGoalThroughput := t.GoalThroughputPerSec * t.ClearFrequencySec
+	// figure out our target throughput per key over ClearFrequencyDuration
+	totalGoalThroughput := float64(t.GoalThroughputPerSec) * t.ClearFrequencyDuration.Seconds()
 	// floor the throughput but min should be 1 event per bucket per time period
-	throughputPerKey := int(math.Max(1, float64(totalGoalThroughput)/float64(numKeys)))
+	throughputPerKey := int(math.Max(1, totalGoalThroughput/float64(numKeys)))
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
 	newSavedSampleRates := make(map[string]int)

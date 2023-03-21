@@ -410,3 +410,36 @@ func randomString(length int) string {
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)
 }
+
+func TestAvgSampleRate_Start(t *testing.T) {
+	tests := []struct {
+		name                   string
+		ClearFrequencySec      int
+		ClearFrequencyDuration time.Duration
+		wantDuration           time.Duration
+		wantErr                bool
+	}{
+		{"sec only", 2, 0, 2 * time.Second, false},
+		{"dur only", 0, 1003 * time.Millisecond, 1003 * time.Millisecond, false},
+		{"default", 0, 0, 30 * time.Second, false},
+		{"both", 2, 2 * time.Second, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &AvgSampleRate{
+				ClearFrequencySec:      tt.ClearFrequencySec,
+				ClearFrequencyDuration: tt.ClearFrequencyDuration,
+			}
+			err := a.Start()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("AvgSampleRate error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil {
+				defer a.Stop()
+				if tt.wantDuration != a.ClearFrequencyDuration {
+					t.Errorf("AvgSampleRate duration mismatch = want %v, got %v", tt.wantDuration, a.ClearFrequencyDuration)
+				}
+			}
+		})
+	}
+}

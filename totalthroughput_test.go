@@ -5,14 +5,15 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTotalThroughputUpdateMaps(t *testing.T) {
 	s := &TotalThroughput{
-		ClearFrequencySec:    30,
-		GoalThroughputPerSec: 20,
+		ClearFrequencyDuration: 30 * time.Second,
+		GoalThroughputPerSec:   20,
 	}
 	tsts := []struct {
 		inputSampleCount         map[string]int
@@ -223,4 +224,37 @@ func TestTotalThroughputMaxKeys(t *testing.T) {
 	tt.GetSampleRate("one")
 	assert.Equal(t, 3, len(tt.currentCounts))
 	assert.Equal(t, 2, tt.currentCounts["one"])
+}
+
+func TestTotalThroughput_Start(t *testing.T) {
+	tests := []struct {
+		name                   string
+		ClearFrequencySec      int
+		ClearFrequencyDuration time.Duration
+		wantDuration           time.Duration
+		wantErr                bool
+	}{
+		{"sec only", 2, 0, 2 * time.Second, false},
+		{"dur only", 0, 1003 * time.Millisecond, 1003 * time.Millisecond, false},
+		{"default", 0, 0, 30 * time.Second, false},
+		{"both", 2, 2 * time.Second, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &TotalThroughput{
+				ClearFrequencySec:      tt.ClearFrequencySec,
+				ClearFrequencyDuration: tt.ClearFrequencyDuration,
+			}
+			err := a.Start()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("TotalThroughput error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil {
+				defer a.Stop()
+				if tt.wantDuration != a.ClearFrequencyDuration {
+					t.Errorf("TotalThroughput duration mismatch = want %v, got %v", tt.wantDuration, a.ClearFrequencyDuration)
+				}
+			}
+		})
+	}
 }

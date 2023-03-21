@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -8,8 +9,8 @@ import (
 // OnlyOnce implements Sampler and returns a sample rate of 1 the first time a
 // key is seen and 1,000,000,000 every subsequent time.  Essentially, this means
 // that every key will be reported the first time it's seen during each
-// ClearFrequencySec and never again.  Set ClearFrequencySec to -1 to report
-// each key only once for the life of the process.
+// ClearFrequencySec and never again.  Set ClearFrequencySec to a negative
+// number to report each key only once for the life of the process.
 //
 // (Note that it's not guaranteed that each key will be reported exactly once,
 // just that the first seen event will be reported and subsequent events are
@@ -20,8 +21,14 @@ import (
 // the first one is important but every subsequent one just repeats the same
 // information.
 type OnlyOnce struct {
-	// ClearFrequencySec is how often the counters reset in seconds; default 30
+	// DEPRECATED -- use ClearFrequencyDuration.
+	// ClearFrequencySec is how often the counters reset in seconds.
 	ClearFrequencySec int
+
+	// ClearFrequencyDuration is how often the counters reset as a Duration.
+	// Note that either this or ClearFrequencySec can be specified, but not both.
+	// If neither one is set, the default is 30s.
+	ClearFrequencyDuration time.Duration
 
 	seen map[string]bool
 	done chan struct{}
@@ -34,19 +41,27 @@ var _ Sampler = (*OnlyOnce)(nil)
 
 // Start initializes the static dynsampler
 func (o *OnlyOnce) Start() error {
-	//
-	if o.ClearFrequencySec == -1 {
+	if o.ClearFrequencyDuration != 0 && o.ClearFrequencySec != 0 {
+		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
+	}
+
+	if o.ClearFrequencyDuration == 0 && o.ClearFrequencySec == 0 {
+		o.ClearFrequencyDuration = 30 * time.Second
+	} else if o.ClearFrequencySec != 0 {
+		o.ClearFrequencyDuration = time.Duration(o.ClearFrequencySec) * time.Second
+	}
+
+	// if it's negative, we don't even start something
+	if o.ClearFrequencyDuration < 0 {
 		return nil
 	}
-	if o.ClearFrequencySec == 0 {
-		o.ClearFrequencySec = 30
-	}
+
 	o.seen = make(map[string]bool)
 	o.done = make(chan struct{})
 
 	// spin up calculator
 	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(o.ClearFrequencySec))
+		ticker := time.NewTicker(o.ClearFrequencyDuration)
 		defer ticker.Stop()
 		for {
 			select {
@@ -61,7 +76,9 @@ func (o *OnlyOnce) Start() error {
 }
 
 func (o *OnlyOnce) Stop() error {
-	close(o.done)
+	if o.done != nil {
+		close(o.done)
+	}
 	return nil
 }
 
