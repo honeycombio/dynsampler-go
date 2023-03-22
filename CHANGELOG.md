@@ -1,5 +1,33 @@
 # dynsampler-go changelog
 
+## 0.4.0 2023-03-22
+
+This version contains two new samplers and some (backwards-compatible) changes to the API:
+- Many thanks to [Yi Zhao](https://github.com/yizzlez) for the contribution of the `WindowedThroughput` sampler. This sampler is like the Throughput sampler, but uses a moving average to accumulate sample rates across multiple sampling periods.
+- The new `EMAThroughput` sampler adjusts overall throughput to achieve a goal while also ensuring that all values in the key space are represented.
+- The `GetSampleRateMulti()` function allows a single request to represent multiple events. This is particularly useful when tail-sampling at the trace level (because each trace represents a number of spans).
+- All samplers now support specifying a `time.Duration` instead of a time in seconds. Fields like `ClearFrequencySec` are now deprecated and will be dropped in a future release.
+
+⚠️ As of this version, dynsampler-go requires and is tested on versions of Go 1.17 and greater.
+
+### Features
+
+- feat: EMAThroughput sampler (#58) | [Kent Quirk](https://github.com/kentquirk)
+- feat: Deprecate integer seconds and replace with time.Duration (#59) | [Kent Quirk](https://github.com/kentquirk)
+- feat: add GetSampleRateMulti (#53) | [Kent Quirk](https://github.com/kentquirk)
+- feat: Windowed Throughput Sampling (#45) | [Yi Zhao](https://github.com/yizzlez)
+  - fix: Fix flaky blocklist test (#52) | [Yi Zhao](https://github.com/yizzlez)
+
+### Maintenance
+
+- maint: Pull out common calculation into a function (#57) | [Kent Quirk](https://github.com/kentquirk)
+- maint: bump the go versions we support (#55) | [Kent Quirk](https://github.com/kentquirk)
+- maint(deps): bump github.com/stretchr/testify from 1.6.1 to 1.8.2 (#49) | [dependabot[bot]](https://github.com/dependabot[bot])
+- maint: remove buildevents from circle (#48) | [Jamie Danielson](https://github.com/JamieDanielson)
+- chore: Update workflow (#47) | [Tyler Helmuth](https://github.com/TylerHelmuth)
+- chore: Update CODEOWNERS (#46) | [Tyler Helmuth](https://github.com/TylerHelmuth)
+- chore: update dependabot.yml (#44) | [Kent Quirk](https://github.com/kentquirk)
+
 ## 0.3.0 2022-12-07
 
 ⚠️ As of this version, dynsampler-go is only tested on Go 1.16 or greater.
