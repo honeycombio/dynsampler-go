@@ -166,9 +166,9 @@ func (p *PerKeyThroughput) GetMetrics(prefix string) map[string]int64 {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	mets := map[string]int64{
-		prefix + "_request_count": p.requestCount,
-		prefix + "_event_count":   p.eventCount,
-		prefix + "_keyspace_size": int64(len(p.currentCounts)),
+		prefix + "request_count": p.requestCount,
+		prefix + "event_count":   p.eventCount,
+		prefix + "keyspace_size": int64(len(p.currentCounts)),
 	}
 	return mets
 }

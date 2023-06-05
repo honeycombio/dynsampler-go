@@ -127,9 +127,9 @@ func (o *OnlyOnce) GetMetrics(prefix string) map[string]int64 {
 	o.lock.Lock()
 	defer o.lock.Unlock()
 	mets := map[string]int64{
-		prefix + "_request_count": o.requestCount,
-		prefix + "_event_count":   o.eventCount,
-		prefix + "_keyspace_size": int64(len(o.seen)),
+		prefix + "request_count": o.requestCount,
+		prefix + "event_count":   o.eventCount,
+		prefix + "keyspace_size": int64(len(o.seen)),
 	}
 	return mets
 }

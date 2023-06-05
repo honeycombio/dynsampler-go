@@ -207,9 +207,9 @@ func (a *AvgSampleWithMin) GetMetrics(prefix string) map[string]int64 {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	mets := map[string]int64{
-		prefix + "_request_count": a.requestCount,
-		prefix + "_event_count":   a.eventCount,
-		prefix + "_keyspace_size": int64(len(a.currentCounts)),
+		prefix + "request_count": a.requestCount,
+		prefix + "event_count":   a.eventCount,
+		prefix + "keyspace_size": int64(len(a.currentCounts)),
 	}
 	return mets
 }

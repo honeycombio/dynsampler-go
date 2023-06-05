@@ -67,9 +67,9 @@ func (s *Static) GetMetrics(prefix string) map[string]int64 {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	mets := map[string]int64{
-		prefix + "_request_count": s.requestCount,
-		prefix + "_event_count":   s.eventCount,
-		prefix + "_keyspace_size": int64(len(s.Rates)),
+		prefix + "request_count": s.requestCount,
+		prefix + "event_count":   s.eventCount,
+		prefix + "keyspace_size": int64(len(s.Rates)),
 	}
 	return mets
 }

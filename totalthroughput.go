@@ -175,9 +175,9 @@ func (t *TotalThroughput) GetMetrics(prefix string) map[string]int64 {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	mets := map[string]int64{
-		prefix + "_request_count": t.requestCount,
-		prefix + "_event_count":   t.eventCount,
-		prefix + "_keyspace_size": int64(len(t.currentCounts)),
+		prefix + "request_count": t.requestCount,
+		prefix + "event_count":   t.eventCount,
+		prefix + "keyspace_size": int64(len(t.currentCounts)),
 	}
 	return mets
 }

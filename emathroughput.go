@@ -372,11 +372,11 @@ func (e *EMAThroughput) GetMetrics(prefix string) map[string]int64 {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	mets := map[string]int64{
-		prefix + "_request_count":  e.requestCount,
-		prefix + "_event_count":    e.eventCount,
-		prefix + "_burst_count":    e.burstCount,
-		prefix + "_interval_count": int64(e.intervalCount),
-		prefix + "_keyspace_size":  int64(len(e.currentCounts)),
+		prefix + "request_count":  e.requestCount,
+		prefix + "event_count":    e.eventCount,
+		prefix + "burst_count":    e.burstCount,
+		prefix + "interval_count": int64(e.intervalCount),
+		prefix + "keyspace_size":  int64(len(e.currentCounts)),
 	}
 	return mets
 }
