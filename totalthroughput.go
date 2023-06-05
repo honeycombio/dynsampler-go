@@ -46,6 +46,10 @@ type TotalThroughput struct {
 	done             chan struct{}
 
 	lock sync.Mutex
+
+	// metrics
+	requestCount int64
+	eventCount   int64
 }
 
 // Ensure we implement the sampler interface
@@ -138,6 +142,10 @@ func (t *TotalThroughput) GetSampleRate(key string) int {
 func (t *TotalThroughput) GetSampleRateMulti(key string, count int) int {
 	t.lock.Lock()
 	defer t.lock.Unlock()
+
+	t.requestCount++
+	t.eventCount += int64(count)
+
 	// Enforce MaxKeys limit on the size of the map
 	if t.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
@@ -161,4 +169,15 @@ func (t *TotalThroughput) SaveState() ([]byte, error) {
 // LoadState is not implemented
 func (t *TotalThroughput) LoadState(state []byte) error {
 	return nil
+}
+
+func (t *TotalThroughput) GetMetrics(prefix string) map[string]int64 {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	mets := map[string]int64{
+		prefix + "_request_count": t.requestCount,
+		prefix + "_event_count":   t.eventCount,
+		prefix + "_keyspace_size": int64(len(t.currentCounts)),
+	}
+	return mets
 }

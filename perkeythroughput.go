@@ -40,6 +40,10 @@ type PerKeyThroughput struct {
 	done             chan struct{}
 
 	lock sync.Mutex
+
+	// metrics
+	requestCount int64
+	eventCount   int64
 }
 
 // Ensure we implement the sampler interface
@@ -129,6 +133,10 @@ func (p *PerKeyThroughput) GetSampleRate(key string) int {
 func (p *PerKeyThroughput) GetSampleRateMulti(key string, count int) int {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+
+	p.requestCount++
+	p.eventCount += int64(count)
+
 	// Enforce MaxKeys limit on the size of the map
 	if p.MaxKeys > 0 {
 		// If a key already exists, add the count. If not, but we're under the limit, store a new key
@@ -152,4 +160,15 @@ func (p *PerKeyThroughput) SaveState() ([]byte, error) {
 // LoadState is not implemented
 func (p *PerKeyThroughput) LoadState(state []byte) error {
 	return nil
+}
+
+func (p *PerKeyThroughput) GetMetrics(prefix string) map[string]int64 {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	mets := map[string]int64{
+		prefix + "_request_count": p.requestCount,
+		prefix + "_event_count":   p.eventCount,
+		prefix + "_keyspace_size": int64(len(p.currentCounts)),
+	}
+	return mets
 }

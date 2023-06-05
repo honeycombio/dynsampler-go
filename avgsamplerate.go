@@ -49,6 +49,10 @@ type AvgSampleRate struct {
 	done     chan struct{}
 
 	lock sync.Mutex
+
+	// metrics
+	requestCount int64
+	eventCount   int64
 }
 
 // Ensure we implement the sampler interface
@@ -151,6 +155,9 @@ func (a *AvgSampleRate) GetSampleRateMulti(key string, count int) int {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
+	a.requestCount++
+	a.eventCount += int64(count)
+
 	// Enforce MaxKeys limit on the size of the map
 	if a.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
@@ -204,4 +211,15 @@ func (a *AvgSampleRate) LoadState(state []byte) error {
 	a.haveData = true
 
 	return nil
+}
+
+func (a *AvgSampleRate) GetMetrics(prefix string) map[string]int64 {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	mets := map[string]int64{
+		prefix + "_request_count": a.requestCount,
+		prefix + "_event_count":   a.eventCount,
+		prefix + "_keyspace_size": int64(len(a.currentCounts)),
+	}
+	return mets
 }
