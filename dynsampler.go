@@ -35,4 +35,10 @@ type Sampler interface {
 	// LoadState accepts a byte array containing the serialized, previous state of the sampler
 	// implementation. It should be called before `Start`.
 	LoadState([]byte) error
+
+	// GetMetrics returns a map of metrics about the sampler's performance.
+	// All values are returned as int64; counters are cumulative and the names
+	// always end with "_count", while gauges are instantaneous with no particular naming convention.
+	// All names are prefixed with the given string.
+	GetMetrics(prefix string) map[string]int64
 }

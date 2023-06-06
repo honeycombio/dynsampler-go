@@ -33,6 +33,10 @@ type OnlyOnce struct {
 	seen map[string]bool
 	done chan struct{}
 
+	// metrics
+	requestCount int64
+	eventCount   int64
+
 	lock sync.Mutex
 }
 
@@ -99,6 +103,9 @@ func (o *OnlyOnce) GetSampleRate(key string) int {
 func (o *OnlyOnce) GetSampleRateMulti(key string, count int) int {
 	o.lock.Lock()
 	defer o.lock.Unlock()
+	o.requestCount++
+	o.eventCount += int64(count)
+
 	if _, found := o.seen[key]; found {
 		return 1000000000
 	}
@@ -114,4 +121,15 @@ func (o *OnlyOnce) SaveState() ([]byte, error) {
 // LoadState is not implemented
 func (o *OnlyOnce) LoadState(state []byte) error {
 	return nil
+}
+
+func (o *OnlyOnce) GetMetrics(prefix string) map[string]int64 {
+	o.lock.Lock()
+	defer o.lock.Unlock()
+	mets := map[string]int64{
+		prefix + "request_count": o.requestCount,
+		prefix + "event_count":   o.eventCount,
+		prefix + "keyspace_size": int64(len(o.seen)),
+	}
+	return mets
 }

@@ -56,6 +56,11 @@ type WindowedThroughput struct {
 	indexGenerator IndexGenerator
 
 	lock sync.Mutex
+
+	// metrics
+	requestCount int64
+	eventCount   int64
+	numKeys      int
 }
 
 // Ensure we implement the sampler interface
@@ -146,8 +151,8 @@ func (t *WindowedThroughput) updateMaps() {
 
 	// Apply the same aggregation algorithm as total throughput
 	// Short circuit if no traffic
-	numKeys := len(aggregateCounts)
-	if numKeys == 0 {
+	t.numKeys = len(aggregateCounts)
+	if t.numKeys == 0 {
 		// no traffic during the last period.
 		t.lock.Lock()
 		defer t.lock.Unlock()
@@ -157,7 +162,7 @@ func (t *WindowedThroughput) updateMaps() {
 	// figure out our target throughput per key over the lookback window.
 	totalGoalThroughput := t.GoalThroughputPerSec * t.LookbackFrequencyDuration.Seconds()
 	// floor the throughput but min should be 1 event per bucket per time period
-	throughputPerKey := math.Max(1, float64(totalGoalThroughput)/float64(numKeys))
+	throughputPerKey := math.Max(1, float64(totalGoalThroughput)/float64(t.numKeys))
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
 	newSavedSampleRates := make(map[string]int)
@@ -180,6 +185,9 @@ func (t *WindowedThroughput) GetSampleRate(key string) int {
 // GetSampleRateMulti takes a key representing count spans and returns the
 // appropriate sample rate for that key.
 func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
+	t.requestCount++
+	t.eventCount += int64(count)
+
 	// Insert the new key into the map.
 	current := t.indexGenerator.GetCurrentIndex()
 	err := t.countList.IncrementKey(key, current, count)
@@ -205,4 +213,15 @@ func (t *WindowedThroughput) SaveState() ([]byte, error) {
 // LoadState is not implemented
 func (t *WindowedThroughput) LoadState(state []byte) error {
 	return nil
+}
+
+func (t *WindowedThroughput) GetMetrics(prefix string) map[string]int64 {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	mets := map[string]int64{
+		prefix + "request_count": t.requestCount,
+		prefix + "event_count":   t.eventCount,
+		prefix + "keyspace_size": int64(t.numKeys),
+	}
+	return mets
 }

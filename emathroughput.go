@@ -99,6 +99,11 @@ type EMAThroughput struct {
 
 	// used only in tests
 	testSignalMapsDone chan struct{}
+
+	// metrics
+	requestCount int64
+	eventCount   int64
+	burstCount   int64
 }
 
 // Ensure we implement the sampler interface
@@ -249,6 +254,9 @@ func (e *EMAThroughput) GetSampleRateMulti(key string, count int) int {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
+	e.requestCount++
+	e.eventCount += int64(count)
+
 	// Enforce MaxKeys limit on the size of the map
 	if e.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
@@ -265,6 +273,7 @@ func (e *EMAThroughput) GetSampleRateMulti(key string, count int) int {
 	if e.burstThreshold > 0 && e.currentBurstSum >= e.burstThreshold && e.intervalCount >= e.BurstDetectionDelay {
 		// reset the burst sum to prevent additional burst updates from occurring while updateMaps is running
 		e.currentBurstSum = 0
+		e.burstCount++
 		// send but don't block - consuming is blocked on updateMaps, which takes the same lock we're holding
 		select {
 		case e.burstSignal <- struct{}{}:
@@ -357,4 +366,17 @@ func (e *EMAThroughput) LoadState(state []byte) error {
 	e.haveData = true
 
 	return nil
+}
+
+func (e *EMAThroughput) GetMetrics(prefix string) map[string]int64 {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	mets := map[string]int64{
+		prefix + "request_count":  e.requestCount,
+		prefix + "event_count":    e.eventCount,
+		prefix + "burst_count":    e.burstCount,
+		prefix + "interval_count": int64(e.intervalCount),
+		prefix + "keyspace_size":  int64(len(e.currentCounts)),
+	}
+	return mets
 }
