@@ -1,5 +1,21 @@
 # dynsampler-go changelog
 
+## 0.5.0 2023-06-08
+
+This version extends the Sampler interface to include a new GetMetrics function,
+which returns a collection of metrics relevant to that specific sampler. This
+improves visibility into the sampler and will be used in an upcoming release of
+Honeycomb's Refinery. This is a breaking change for code implemented so as to
+conform to the `dynsampler.Sampler` interface, such as hand-coded mocks used for
+testing. Code using the interface is unaffected.
+
+### Features
+- feat: Add metrics counter retrieval (#65) | [Kent Quirk](https://github.com/Kent Quirk)
+
+### Maintenance
+- maint(deps): bump github.com/stretchr/testify from 1.8.2 to 1.8.4 (#64) | [dependabot[bot]](https://github.com/dependabot[bot])
+- maint: update dependabot.yml (#63) | [Vera Reynolds](https://github.com/Vera Reynolds)
+
 ## 0.4.0 2023-03-22
 
 This version contains two new samplers and some (backwards-compatible) changes to the API:
