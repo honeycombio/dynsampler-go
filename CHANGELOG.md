@@ -1,5 +1,14 @@
 # dynsampler-go changelog
 
+## 0.5.0 2023-06-08
+
+This version extends the Sampler interface to include a new GetMetrics function,
+which returns a collection of metrics relevant to that specific sampler. This
+improves visibility into the sampler and will be used in an upcoming release of
+Honeycomb's Refinery. This is a breaking change for code implemented so as to
+conform to the `dynsampler.Sampler` interface, such as hand-coded mocks used for
+testing. Code using the interface is unaffected.
+
 ## 0.4.0 2023-03-22
 
 This version contains two new samplers and some (backwards-compatible) changes to the API:
