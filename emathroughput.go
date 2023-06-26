@@ -217,11 +217,8 @@ func (e *EMAThroughput) updateMaps() {
 	e.lock.Unlock()
 
 	// Calculate the desired average sample rate per second based on the volume we've received.
-	// InitialSampleRate := float64(sumEvents) / e.AdjustmentInterval.Seconds() / float64(e.GoalThroughputPerSec)
-	// goalCount := float64(sumEvents) / InitialSampleRate
-
-	// Calculate the number of events we'd like to let through per adjustment interval
-	goalCount := float64(e.GoalThroughputPerSec) / e.AdjustmentInterval.Seconds()
+	// This is the number of events we'd like to let through per adjustment interval.
+	goalCount := float64(e.GoalThroughputPerSec) * e.AdjustmentInterval.Seconds()
 
 	// goalRatio is the goalCount divided by the sum of all the log values - it
 	// determines what percentage of the total event space belongs to each key
