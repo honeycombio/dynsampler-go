@@ -1,5 +1,13 @@
 # dynsampler-go changelog
 
+## 0.5.1 2023-06-26
+
+This version corrects a math error in the EMAThroughput sampler.
+
+### Fixes
+
+- fix: Correct EMAThroughput math error (#67) | [Kent Quirk](https://github.com/kentquirk)
+
 ## 0.5.0 2023-06-08
 
 This version extends the Sampler interface to include a new GetMetrics function,
@@ -10,11 +18,11 @@ conform to the `dynsampler.Sampler` interface, such as hand-coded mocks used for
 testing. Code using the interface is unaffected.
 
 ### Features
-- feat: Add metrics counter retrieval (#65) | [Kent Quirk](https://github.com/Kent Quirk)
+- feat: Add metrics counter retrieval (#65) | [Kent Quirk](https://github.com/kentquirk)
 
 ### Maintenance
 - maint(deps): bump github.com/stretchr/testify from 1.8.2 to 1.8.4 (#64) | [dependabot[bot]](https://github.com/dependabot[bot])
-- maint: update dependabot.yml (#63) | [Vera Reynolds](https://github.com/Vera Reynolds)
+- maint: update dependabot.yml (#63) | [Vera Reynolds](https://github.com/vreynolds)
 
 ## 0.4.0 2023-03-22
 
