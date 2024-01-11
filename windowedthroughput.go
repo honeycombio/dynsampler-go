@@ -151,18 +151,19 @@ func (t *WindowedThroughput) updateMaps() {
 
 	// Apply the same aggregation algorithm as total throughput
 	// Short circuit if no traffic
-	t.numKeys = len(aggregateCounts)
-	if t.numKeys == 0 {
+	numKeys := len(aggregateCounts)
+	if numKeys == 0 {
 		// no traffic during the last period.
 		t.lock.Lock()
 		defer t.lock.Unlock()
+		t.numKeys = 0
 		t.savedSampleRates = make(map[string]int)
 		return
 	}
 	// figure out our target throughput per key over the lookback window.
 	totalGoalThroughput := t.GoalThroughputPerSec * t.LookbackFrequencyDuration.Seconds()
 	// floor the throughput but min should be 1 event per bucket per time period
-	throughputPerKey := math.Max(1, float64(totalGoalThroughput)/float64(t.numKeys))
+	throughputPerKey := math.Max(1, float64(totalGoalThroughput)/float64(numKeys))
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
 	newSavedSampleRates := make(map[string]int)
@@ -174,6 +175,7 @@ func (t *WindowedThroughput) updateMaps() {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.savedSampleRates = newSavedSampleRates
+	t.numKeys = numKeys
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
