@@ -1,5 +1,21 @@
 # dynsampler-go changelog
 
+## 0.6.0 2024-01-12
+
+This version tweaks Throughput samplers to permit calculating non-integer sample rates, which makes them choose better sample rates in many scenarios. It also fixes a race condition that was recently detected by an improved Go runtime.
+
+### Fixes
+
+- fix: allow throughput samplers to have non-integer rates (#74) | [Yi Zhao](https://github.com/yizzlez)
+- fix: race condition in WindowedThroughput sampler (#73) | [Kent Quirk](https://github.com/KentQuirk)
+
+## Maintenance
+
+- maint: update codeowners to pipeline-team (#72) | [Jamie Danielson](https://github.com/JamieDanielson)
+- maint: update project workflow for pipeline (#71) | [Jamie Danielson](https://github.com/JamieDanielson)
+- maint: update codeowners to pipeline (#70) | [Jamie Danielson](https://github.com/JamieDanielson)
+
+
 ## 0.5.1 2023-06-26
 
 This version corrects a math error in the EMAThroughput sampler.
