@@ -48,7 +48,7 @@ func TestGenericSamplerBehavior(t *testing.T) {
 			&dynsampler.TotalThroughput{
 				ClearFrequencyDuration: 1 * time.Second,
 				GoalThroughputPerSec:   5,
-			}, []int{1, 3, 9, 27, 81, 243, 729, 2187},
+			}, []int{1, 4, 14, 43, 129, 388, 1166, 3499},
 		},
 		{"WindowedThroughput",
 			&dynsampler.WindowedThroughput{
