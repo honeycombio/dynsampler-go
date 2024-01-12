@@ -116,8 +116,8 @@ func (t *TotalThroughput) updateMaps() {
 	}
 	// figure out our target throughput per key over ClearFrequencyDuration
 	totalGoalThroughput := float64(t.GoalThroughputPerSec) * t.ClearFrequencyDuration.Seconds()
-	// floor the throughput but min should be 1 event per bucket per time period
-	throughputPerKey := int(math.Max(1, totalGoalThroughput/float64(numKeys)))
+	// split the total throughput equally across the number of keys.
+	throughputPerKey := float64(totalGoalThroughput) / float64(numKeys)
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
 	newSavedSampleRates := make(map[string]int)
