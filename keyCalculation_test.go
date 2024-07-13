@@ -1,7 +1,6 @@
 package dynsampler
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 )
@@ -16,12 +15,15 @@ func randomFieldName() string {
 	return dictionary[rand.Intn(len(dictionary))]
 }
 
-// generateTestData creates a map of test data with the specified number of keys
 func generateTestData(numKeys int) map[string]float64 {
 	data := make(map[string]float64, numKeys)
 	for i := 0; i < numKeys; i++ {
-		key := fmt.Sprintf("%s%d", randomFieldName(), i)
-		data[key] = rand.Float64() * 1000 // Random value between 0 and 1000
+		key := randomFieldName()
+		if key == "http.request.route" {
+			data[key] = rand.Float64() * 100
+		} else {
+			data[key] = rand.Float64() * 10
+		}
 	}
 	return data
 }
