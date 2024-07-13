@@ -42,13 +42,13 @@ func BenchmarkCalculateSampleRates(b *testing.B) {
 	for _, tc := range testCases {
 		testData := generateTestData(tc.numKeys)
 
-		b.Run(tc.name+"Original", func(b *testing.B) {
+		b.Run(tc.name+"Optimized", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				calculateSampleRates(0.1, testData)
 			}
 		})
 
-		b.Run(tc.name+"Optimized", func(b *testing.B) {
+		b.Run(tc.name+"Original", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				calculateSampleRates_original(0.1, testData)
 			}
