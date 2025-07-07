@@ -14,8 +14,12 @@ type Static struct {
 	lock sync.Mutex
 
 	// metrics
-	requestCount int64
-	eventCount   int64
+	requestCount    int64
+	eventCount      int64
+	prefix          string
+	requestCountKey string
+	eventCountKey   string
+	keyspaceSizeKey string
 }
 
 // Ensure we implement the sampler interface
@@ -66,10 +70,21 @@ func (s *Static) LoadState(state []byte) error {
 func (s *Static) GetMetrics(prefix string) map[string]int64 {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	mets := map[string]int64{
-		prefix + "request_count": s.requestCount,
-		prefix + "event_count":   s.eventCount,
-		prefix + "keyspace_size": int64(len(s.Rates)),
+
+	if s.prefix == "" {
+		s.prefix = prefix
+		s.requestCountKey = s.prefix + requestCountSuffix
+		s.eventCountKey = s.prefix + eventCountSuffix
+		s.keyspaceSizeKey = s.prefix + keyspaceSizeSuffix
 	}
-	return mets
+
+	if s.prefix != prefix {
+		return nil // if the prefix doesn't match, return nil
+	}
+
+	return map[string]int64{
+		s.requestCountKey: s.requestCount,
+		s.eventCountKey:   s.eventCount,
+		s.keyspaceSizeKey: int64(len(s.Rates)),
+	}
 }

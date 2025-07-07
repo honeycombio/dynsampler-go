@@ -95,9 +95,15 @@ type EMASampleRate struct {
 	testSignalMapsDone chan struct{}
 
 	// metrics
-	requestCount int64
-	eventCount   int64
-	burstCount   int64
+	requestCount     int64
+	eventCount       int64
+	burstCount       int64
+	prefix           string
+	requestCountKey  string
+	eventCountKey    string
+	keyspaceSizeKey  string
+	burstCountKey    string
+	intervalCountKey string
 }
 
 // Ensure we implement the sampler interface
@@ -360,14 +366,28 @@ func (e *EMASampleRate) LoadState(state []byte) error {
 func (e *EMASampleRate) GetMetrics(prefix string) map[string]int64 {
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	mets := map[string]int64{
-		prefix + "request_count":  e.requestCount,
-		prefix + "event_count":    e.eventCount,
-		prefix + "burst_count":    e.burstCount,
-		prefix + "interval_count": int64(e.intervalCount),
-		prefix + "keyspace_size":  int64(len(e.currentCounts)),
+
+	if e.prefix == "" {
+		e.prefix = prefix
+		e.requestCountKey = e.prefix + requestCountSuffix
+		e.eventCountKey = e.prefix + eventCountSuffix
+		e.keyspaceSizeKey = e.prefix + keyspaceSizeSuffix
+		e.burstCountKey = e.prefix + burstCountSuffix
+		e.intervalCountKey = e.prefix + intervalCountSuffix
 	}
-	return mets
+
+	// If the prefix is set but does not match with the current prefix, return nil
+	if e.prefix != prefix {
+		return nil
+	}
+
+	return map[string]int64{
+		e.requestCountKey:  e.requestCount,
+		e.eventCountKey:    e.eventCount,
+		e.keyspaceSizeKey:  int64(len(e.currentCounts)),
+		e.burstCountKey:    e.burstCount,
+		e.intervalCountKey: int64(e.intervalCount),
+	}
 }
 
 func adjustAverage(oldAvg, value float64, alpha float64) float64 {

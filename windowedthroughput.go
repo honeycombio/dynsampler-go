@@ -58,9 +58,13 @@ type WindowedThroughput struct {
 	lock sync.Mutex
 
 	// metrics
-	requestCount int64
-	eventCount   int64
-	numKeys      int
+	requestCount    int64
+	eventCount      int64
+	numKeys         int
+	prefix          string
+	requestCountKey string
+	eventCountKey   string
+	keyspaceSizeKey string
 }
 
 // Ensure we implement the sampler interface
@@ -220,10 +224,21 @@ func (t *WindowedThroughput) LoadState(state []byte) error {
 func (t *WindowedThroughput) GetMetrics(prefix string) map[string]int64 {
 	t.lock.Lock()
 	defer t.lock.Unlock()
+	if t.prefix == "" {
+		t.prefix = prefix
+		t.requestCountKey = t.prefix + requestCountSuffix
+		t.eventCountKey = t.prefix + eventCountSuffix
+		t.keyspaceSizeKey = t.prefix + keyspaceSizeSuffix
+	}
+
+	if t.prefix != prefix {
+		return nil // if the prefix doesn't match, return nil
+	}
+
 	mets := map[string]int64{
-		prefix + "request_count": t.requestCount,
-		prefix + "event_count":   t.eventCount,
-		prefix + "keyspace_size": int64(t.numKeys),
+		t.requestCountKey: t.requestCount,
+		t.eventCountKey:   t.eventCount,
+		t.keyspaceSizeKey: int64(t.numKeys),
 	}
 	return mets
 }
