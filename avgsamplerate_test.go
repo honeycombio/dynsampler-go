@@ -443,3 +443,122 @@ func TestAvgSampleRate_Start(t *testing.T) {
 		})
 	}
 }
+
+func TestAvgSampleRateGetMetrics(t *testing.T) {
+	tests := []struct {
+		name           string
+		prefix         string
+		requestCount   int64
+		eventCount     int64
+		currentCounts  map[string]float64
+		existingPrefix string
+		expectedResult map[string]int64
+		expectNil      bool
+	}{
+		{
+			name:          "first call with prefix",
+			prefix:        "test_",
+			requestCount:  100,
+			eventCount:    500,
+			currentCounts: map[string]float64{"key1": 10, "key2": 20},
+			expectedResult: map[string]int64{
+				"test_request_count": 100,
+				"test_event_count":   500,
+				"test_keyspace_size": 2,
+			},
+		},
+		{
+			name:          "empty prefix",
+			prefix:        "",
+			requestCount:  42,
+			eventCount:    84,
+			currentCounts: map[string]float64{"key1": 5},
+			expectedResult: map[string]int64{
+				"request_count": 42,
+				"event_count":   84,
+				"keyspace_size": 1,
+			},
+		},
+		{
+			name:          "zero counts",
+			prefix:        "zero_",
+			requestCount:  0,
+			eventCount:    0,
+			currentCounts: map[string]float64{},
+			expectedResult: map[string]int64{
+				"zero_request_count": 0,
+				"zero_event_count":   0,
+				"zero_keyspace_size": 0,
+			},
+		},
+		{
+			name:         "large numbers",
+			prefix:       "large_",
+			requestCount: 1000000,
+			eventCount:   5000000,
+			currentCounts: map[string]float64{
+				"key1": 100, "key2": 200, "key3": 300, "key4": 400, "key5": 500,
+			},
+			expectedResult: map[string]int64{
+				"large_request_count": 1000000,
+				"large_event_count":   5000000,
+				"large_keyspace_size": 5,
+			},
+		},
+		{
+			name:           "same prefix second call",
+			prefix:         "same_",
+			requestCount:   200,
+			eventCount:     1000,
+			currentCounts:  map[string]float64{"key1": 15},
+			existingPrefix: "same_",
+			expectedResult: map[string]int64{
+				"same_request_count": 200,
+				"same_event_count":   1000,
+				"same_keyspace_size": 1,
+			},
+		},
+		{
+			name:           "different prefix returns nil",
+			prefix:         "new_",
+			requestCount:   150,
+			eventCount:     750,
+			currentCounts:  map[string]float64{"key1": 25},
+			existingPrefix: "old_",
+			expectNil:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &AvgSampleRate{
+				requestCount:  tt.requestCount,
+				eventCount:    tt.eventCount,
+				currentCounts: tt.currentCounts,
+			}
+
+			// Set existing prefix if specified
+			if tt.existingPrefix != "" {
+				a.prefix = tt.existingPrefix
+				a.requestCountKey = a.prefix + requestCountSuffix
+				a.eventCountKey = a.prefix + eventCountSuffix
+				a.keyspaceSizeKey = a.prefix + keyspaceSizeSuffix
+			}
+
+			result := a.GetMetrics(tt.prefix)
+
+			if tt.expectNil {
+				assert.Nil(t, result)
+				return
+			}
+
+			assert.NotNil(t, result)
+			assert.Equal(t, tt.expectedResult, result)
+
+			assert.Equal(t, tt.prefix, a.prefix)
+			assert.Equal(t, tt.prefix+requestCountSuffix, a.requestCountKey)
+			assert.Equal(t, tt.prefix+eventCountSuffix, a.eventCountKey)
+			assert.Equal(t, tt.prefix+keyspaceSizeSuffix, a.keyspaceSizeKey)
+		})
+	}
+}

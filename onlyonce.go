@@ -34,8 +34,12 @@ type OnlyOnce struct {
 	done chan struct{}
 
 	// metrics
-	requestCount int64
-	eventCount   int64
+	requestCount    int64
+	eventCount      int64
+	prefix          string
+	requestCountKey string
+	eventCountKey   string
+	keyspaceSizeKey string
 
 	lock sync.Mutex
 }
@@ -126,10 +130,22 @@ func (o *OnlyOnce) LoadState(state []byte) error {
 func (o *OnlyOnce) GetMetrics(prefix string) map[string]int64 {
 	o.lock.Lock()
 	defer o.lock.Unlock()
-	mets := map[string]int64{
-		prefix + "request_count": o.requestCount,
-		prefix + "event_count":   o.eventCount,
-		prefix + "keyspace_size": int64(len(o.seen)),
+
+	if o.prefix == "" {
+		o.prefix = prefix
+		o.requestCountKey = o.prefix + requestCountSuffix
+		o.eventCountKey = o.prefix + eventCountSuffix
+		o.keyspaceSizeKey = o.prefix + keyspaceSizeSuffix
 	}
-	return mets
+
+	// If the prefix is set but does not match with the current prefix, return nil
+	if o.prefix != prefix {
+		return nil
+	}
+
+	return map[string]int64{
+		o.requestCountKey: o.requestCount,
+		o.eventCountKey:   o.eventCount,
+		o.keyspaceSizeKey: int64(len(o.seen)),
+	}
 }

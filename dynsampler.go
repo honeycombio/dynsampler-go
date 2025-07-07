@@ -42,3 +42,12 @@ type Sampler interface {
 	// All names are prefixed with the given string.
 	GetMetrics(prefix string) map[string]int64
 }
+
+// metrics suffixes for the sampler
+const (
+	requestCountSuffix  = "request_count"
+	eventCountSuffix    = "event_count"
+	keyspaceSizeSuffix  = "keyspace_size"
+	burstCountSuffix    = "burst_count"
+	intervalCountSuffix = "interval_count"
+)

@@ -42,8 +42,12 @@ type PerKeyThroughput struct {
 	lock sync.Mutex
 
 	// metrics
-	requestCount int64
-	eventCount   int64
+	requestCount    int64
+	eventCount      int64
+	prefix          string
+	requestCountKey string
+	eventCountKey   string
+	keyspaceSizeKey string
 }
 
 // Ensure we implement the sampler interface
@@ -165,10 +169,21 @@ func (p *PerKeyThroughput) LoadState(state []byte) error {
 func (p *PerKeyThroughput) GetMetrics(prefix string) map[string]int64 {
 	p.lock.Lock()
 	defer p.lock.Unlock()
+
+	if p.prefix == "" {
+		p.prefix = prefix
+		p.requestCountKey = p.prefix + requestCountSuffix
+		p.eventCountKey = p.prefix + eventCountSuffix
+		p.keyspaceSizeKey = p.prefix + keyspaceSizeSuffix
+	}
+	if p.prefix != prefix {
+		return nil // if the prefix doesn't match, return nil
+	}
+
 	mets := map[string]int64{
-		prefix + "request_count": p.requestCount,
-		prefix + "event_count":   p.eventCount,
-		prefix + "keyspace_size": int64(len(p.currentCounts)),
+		p.requestCountKey: p.requestCount,
+		p.eventCountKey:   p.eventCount,
+		p.keyspaceSizeKey: int64(len(p.currentCounts)),
 	}
 	return mets
 }

@@ -55,8 +55,12 @@ type AvgSampleWithMin struct {
 	lock sync.Mutex
 
 	// metrics
-	requestCount int64
-	eventCount   int64
+	requestCount    int64
+	eventCount      int64
+	prefix          string
+	requestCountKey string
+	eventCountKey   string
+	keyspaceSizeKey string
 }
 
 // Ensure we implement the sampler interface
@@ -206,10 +210,22 @@ func (a *AvgSampleWithMin) LoadState(state []byte) error {
 func (a *AvgSampleWithMin) GetMetrics(prefix string) map[string]int64 {
 	a.lock.Lock()
 	defer a.lock.Unlock()
-	mets := map[string]int64{
-		prefix + "request_count": a.requestCount,
-		prefix + "event_count":   a.eventCount,
-		prefix + "keyspace_size": int64(len(a.currentCounts)),
+
+	if a.prefix == "" {
+		a.prefix = prefix
+		a.requestCountKey = a.prefix + requestCountSuffix
+		a.eventCountKey = a.prefix + eventCountSuffix
+		a.keyspaceSizeKey = a.prefix + keyspaceSizeSuffix
 	}
-	return mets
+
+	// If the prefix is set but does not match with the current prefix, return nil
+	if a.prefix != prefix {
+		return nil
+	}
+
+	return map[string]int64{
+		a.requestCountKey: a.requestCount,
+		a.eventCountKey:   a.eventCount,
+		a.keyspaceSizeKey: int64(len(a.currentCounts)),
+	}
 }
