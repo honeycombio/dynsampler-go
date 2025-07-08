@@ -49,7 +49,9 @@ jobs:
           path: ./unit-tests.xml
 
   publish_github:
-    executor: go
+    executor:
+      name: go
+      goversion: "1.23"
     steps:
       - checkout
       - run:
