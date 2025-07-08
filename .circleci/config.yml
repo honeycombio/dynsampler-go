@@ -51,7 +51,7 @@ jobs:
   publish_github:
     executor:
       name: go
-      goversion: "1.23"
+      goversion: "24"
     steps:
       - checkout
       - run:
