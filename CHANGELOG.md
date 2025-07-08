@@ -1,5 +1,20 @@
 # dynsampler-go changelog
 
+## 0.6.1 2025-07-08
+
+This version improves the performance of `GetMetrics` function by reducing repeated dynamic string operations for metric keys creation.
+
+### Performance
+
+- perf: pre-compute metric keys (#81) | [Yingrong Zhao](https://github.com/vinozzZ)
+
+## Maintenance
+
+- maint(deps): bump github.com/stretchr/testify from 1.9.0 to 1.10.0 (#80) | [dependabot[bot]](https://github.com/dependabot[bot])
+- docs: update vulnerability reporting process (#79) | [Robb Kidd](https://github.com/RobbKidd)
+- maint(deps): bump github.com/stretchr/testify from 1.8.4 to 1.9.0 (#77) | [dependabot[bot]](https://github.com/dependabot[bot])
+- maint: add labels to release.yml for auto-generated grouping (#76) | [Jamie Danielson](https://github.com/JamieDanielson)
+
 ## 0.6.0 2024-01-12
 
 This version tweaks Throughput samplers to permit calculating non-integer sample rates, which makes them choose better sample rates in many scenarios. It also fixes a race condition that was recently detected by an improved Go runtime.
