@@ -50,7 +50,7 @@ jobs:
 
   publish_github:
     docker:
-      - image: cibuilds/github:0.13.0
+      - image: cibuilds/github:0.13
     steps:
       - checkout
       - run:
