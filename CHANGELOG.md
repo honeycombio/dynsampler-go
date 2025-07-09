@@ -1,19 +1,28 @@
 # dynsampler-go changelog
 
-## 0.6.1 2025-07-08
+## 0.6.3 2025-07-09
 
 This version improves the performance of `GetMetrics` function by reducing repeated dynamic string operations for metric keys creation.
 
-### Performance
+## What's Changed
 
-- perf: pre-compute metric keys (#81) | [Yingrong Zhao](https://github.com/vinozzZ)
+### 💡 Enhancements
 
-## Maintenance
+- perf: pre-compute metric keys by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/81
 
-- maint(deps): bump github.com/stretchr/testify from 1.9.0 to 1.10.0 (#80) | [dependabot[bot]](https://github.com/dependabot[bot])
-- docs: update vulnerability reporting process (#79) | [Robb Kidd](https://github.com/RobbKidd)
-- maint(deps): bump github.com/stretchr/testify from 1.8.4 to 1.9.0 (#77) | [dependabot[bot]](https://github.com/dependabot[bot])
-- maint: add labels to release.yml for auto-generated grouping (#76) | [Jamie Danielson](https://github.com/JamieDanielson)
+### 🛠 Maintenance
+
+- maint(deps): bump github.com/stretchr/testify from 1.8.4 to 1.9.0 by @dependabot in https://github.com/honeycombio/dynsampler-go/pull/77
+- docs: update vulnerability reporting process by @robbkidd in https://github.com/honeycombio/dynsampler-go/pull/79
+- maint(deps): bump github.com/stretchr/testify from 1.9.0 to 1.10.0 by @dependabot in https://github.com/honeycombio/dynsampler-go/pull/80
+- maint: prepare for release v0.6.1 by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/82
+- fix: use a newer go version in publish_github step by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/83
+- fix: our Go executor takes a minor version as param by @robbkidd in https://github.com/honeycombio/dynsampler-go/pull/84
+- maint: update release process by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/85
+
+## 0.6.1 & 0.6.2 2025-07-08
+
+These versions are the result of updates to the release process. They can be safely ignored.
 
 ## 0.6.0 2024-01-12
 
