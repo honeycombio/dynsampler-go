@@ -17,7 +17,7 @@ filters_publish: &filters_publish
 matrix_goversions: &matrix_goversions
   matrix:
     parameters:
-      goversion: ["17", "18", "19", "20"]
+      goversion: ["20", "21", "22", "23", "24"]
 
 # Default version of Go to use for Go steps
 default_goversion: &default_goversion "20"
@@ -49,17 +49,16 @@ jobs:
           path: ./unit-tests.xml
 
   publish_github:
-    executor:
-      name: go
-      goversion: "24"
+    docker:
+      - image: cibuilds/github:0.13.0
     steps:
       - checkout
       - run:
-          name: Install ghr for drafting GitHub Releases
-          command: go install github.com/tcnksm/ghr@latest
-      - run:
-          name: "create draft release at GitHub"
-          command: make publish_github
+          name: "Publish Release on GitHub"
+          command: |
+            echo "Creating GitHub release for tag ${CIRCLE_TAG}"
+            apk add --update make
+            make publish_github
 
 workflows:
   build:
