@@ -191,6 +191,9 @@ func (t *WindowedThroughput) GetSampleRate(key string) int {
 // GetSampleRateMulti takes a key representing count spans and returns the
 // appropriate sample rate for that key.
 func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
 	t.requestCount++
 	t.eventCount += int64(count)
 
@@ -203,8 +206,6 @@ func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
 		return 0
 	}
 
-	t.lock.Lock()
-	defer t.lock.Unlock()
 	if rate, found := t.savedSampleRates[key]; found {
 		return rate
 	}
