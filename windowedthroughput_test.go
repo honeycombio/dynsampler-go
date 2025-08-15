@@ -1,6 +1,8 @@
 package dynsampler
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"time"
@@ -114,4 +116,57 @@ func TestSetsDefaultsCorrectly(t *testing.T) {
 	sampler2.Start()
 	assert.Equal(t, 5*time.Second, sampler2.UpdateFrequencyDuration)
 	assert.Equal(t, 15*time.Second, sampler2.LookbackFrequencyDuration)
+}
+
+// TestWindowedThroughputConcurrency tests that GetSampleRateMulti is safe to call concurrently
+func TestWindowedThroughputConcurrency(t *testing.T) {
+	sampler := &WindowedThroughput{
+		UpdateFrequencyDuration:   1 * time.Second,
+		LookbackFrequencyDuration: 5 * time.Second,
+		GoalThroughputPerSec:      100,
+		MaxKeys:                   1000,
+	}
+
+	err := sampler.Start()
+	if err != nil {
+		t.Fatalf("Failed to start sampler: %v", err)
+	}
+	defer sampler.Stop()
+
+	const numGoroutines = 10
+	const iterationsPerGoroutine = 100
+
+	var wg sync.WaitGroup
+
+	// Test concurrent GetSampleRateMulti calls
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+
+			for j := 0; j < iterationsPerGoroutine; j++ {
+				key := fmt.Sprintf("test-key-%d-%d", goroutineID, j%10)
+				count := (j % 5) + 1
+
+				// This should not cause race conditions
+				rate := sampler.GetSampleRateMulti(key, count)
+
+				// Basic sanity check
+				if rate < 0 {
+					t.Errorf("Got negative sample rate: %d", rate)
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify metrics were updated (basic smoke test)
+	metrics := sampler.GetMetrics("test")
+	if metrics["testrequest_count"] == 0 {
+		t.Error("Expected request count to be greater than 0")
+	}
+	if metrics["testevent_count"] == 0 {
+		t.Error("Expected event count to be greater than 0")
+	}
 }
