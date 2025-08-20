@@ -220,11 +220,12 @@ func (e *EMAThroughput) updateMaps() {
 	// so we need to grab the lock when we update it.
 	e.lock.Lock()
 	e.burstThreshold = sumEvents * e.BurstMultiple
+	goalThroughputPerSec := e.GoalThroughputPerSec
 	e.lock.Unlock()
 
 	// Calculate the desired average sample rate per second based on the volume we've received.
 	// This is the number of events we'd like to let through per adjustment interval.
-	goalCount := float64(e.GoalThroughputPerSec) * e.AdjustmentInterval.Seconds()
+	goalCount := float64(goalThroughputPerSec) * e.AdjustmentInterval.Seconds()
 
 	// goalRatio is the goalCount divided by the sum of all the log values - it
 	// determines what percentage of the total event space belongs to each key
@@ -369,6 +370,15 @@ func (e *EMAThroughput) LoadState(state []byte) error {
 	e.haveData = true
 
 	return nil
+}
+
+// SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner
+func (e *EMAThroughput) SetGoalThroughputPerSec(throughput int) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	if throughput > 0 {
+		e.GoalThroughputPerSec = throughput
+	}
 }
 
 func (e *EMAThroughput) GetMetrics(prefix string) map[string]int64 {

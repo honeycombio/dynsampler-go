@@ -10,6 +10,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestTotalThroughputSetGoalThroughputPerSec(t *testing.T) {
+	s := &TotalThroughput{
+		GoalThroughputPerSec: 100,
+	}
+
+	// Test SetGoalThroughputPerSec method
+	s.SetGoalThroughputPerSec(200)
+	assert.Equal(t, 200, s.GoalThroughputPerSec)
+
+	// Test that invalid values are ignored
+	s.SetGoalThroughputPerSec(0)
+	assert.Equal(t, 200, s.GoalThroughputPerSec)
+
+	s.SetGoalThroughputPerSec(-10)
+	assert.Equal(t, 200, s.GoalThroughputPerSec)
+}
+
 func TestTotalThroughputUpdateMaps(t *testing.T) {
 	s := &TotalThroughput{
 		ClearFrequencyDuration: 30 * time.Second,

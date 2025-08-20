@@ -10,6 +10,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestWindowedThroughputSetGoalThroughputPerSec(t *testing.T) {
+	s := &WindowedThroughput{
+		GoalThroughputPerSec: 100.0,
+	}
+
+	// Test SetGoalThroughputPerSec method
+	s.SetGoalThroughputPerSec(200.5)
+	assert.Equal(t, 200.5, s.GoalThroughputPerSec)
+
+	// Test that invalid values are ignored
+	s.SetGoalThroughputPerSec(0)
+	assert.Equal(t, 200.5, s.GoalThroughputPerSec)
+
+	s.SetGoalThroughputPerSec(-10.5)
+	assert.Equal(t, 200.5, s.GoalThroughputPerSec)
+}
+
 type TestIndexGenerator struct {
 	CurrentIndex int64
 }
