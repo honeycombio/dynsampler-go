@@ -226,11 +226,11 @@ func (t *WindowedThroughput) LoadState(state []byte) error {
 }
 
 // SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner
-func (t *WindowedThroughput) SetGoalThroughputPerSec(throughput float64) {
+func (t *WindowedThroughput) SetGoalThroughputPerSec(throughput int) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	if throughput > 0 {
-		t.GoalThroughputPerSec = throughput
+		t.GoalThroughputPerSec = float64(throughput)
 	}
 }
 

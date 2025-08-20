@@ -16,15 +16,15 @@ func TestWindowedThroughputSetGoalThroughputPerSec(t *testing.T) {
 	}
 
 	// Test SetGoalThroughputPerSec method
-	s.SetGoalThroughputPerSec(200.5)
-	assert.Equal(t, 200.5, s.GoalThroughputPerSec)
+	s.SetGoalThroughputPerSec(200)
+	assert.Equal(t, 200.0, s.GoalThroughputPerSec)
 
 	// Test that invalid values are ignored
 	s.SetGoalThroughputPerSec(0)
-	assert.Equal(t, 200.5, s.GoalThroughputPerSec)
+	assert.Equal(t, 200.0, s.GoalThroughputPerSec)
 
-	s.SetGoalThroughputPerSec(-10.5)
-	assert.Equal(t, 200.5, s.GoalThroughputPerSec)
+	s.SetGoalThroughputPerSec(-10)
+	assert.Equal(t, 200.0, s.GoalThroughputPerSec)
 }
 
 type TestIndexGenerator struct {
