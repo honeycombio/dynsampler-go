@@ -45,6 +45,23 @@ func TestUpdateEMA(t *testing.T) {
 	}
 }
 
+func TestEMASampleRateSetGoalSampleRate(t *testing.T) {
+	e := &EMASampleRate{
+		GoalSampleRate: 10,
+	}
+
+	// Test SetGoalSampleRate method
+	e.SetGoalSampleRate(15)
+	assert.Equal(t, 15, e.GoalSampleRate)
+
+	// Test that invalid values are ignored
+	e.SetGoalSampleRate(0)
+	assert.Equal(t, 15, e.GoalSampleRate)
+
+	e.SetGoalSampleRate(-5)
+	assert.Equal(t, 15, e.GoalSampleRate)
+}
+
 func TestEMASampleGetSampleRateStartup(t *testing.T) {
 	e := &EMASampleRate{
 		GoalSampleRate: 10,

@@ -114,6 +114,7 @@ func (a *AvgSampleRate) updateMaps() {
 	a.lock.Lock()
 	tmpCounts := a.currentCounts
 	a.currentCounts = make(map[string]float64)
+	goalSampleRate := a.GoalSampleRate
 	a.lock.Unlock()
 	// short circuit if no traffic
 	numKeys := len(tmpCounts)
@@ -131,7 +132,7 @@ func (a *AvgSampleRate) updateMaps() {
 	for _, count := range tmpCounts {
 		sumEvents += count
 	}
-	goalCount := sumEvents / float64(a.GoalSampleRate)
+	goalCount := sumEvents / float64(goalSampleRate)
 	// goalRatio is the goalCount divided by the sum of all the log values - it
 	// determines what percentage of the total event space belongs to each key
 	var logSum float64
@@ -215,6 +216,15 @@ func (a *AvgSampleRate) LoadState(state []byte) error {
 	a.haveData = true
 
 	return nil
+}
+
+// SetGoalSampleRate updates the goal sample rate in a concurrency-safe manner
+func (a *AvgSampleRate) SetGoalSampleRate(rate int) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if rate > 0 {
+		a.GoalSampleRate = rate
+	}
 }
 
 func (a *AvgSampleRate) GetMetrics(prefix string) map[string]int64 {
