@@ -118,6 +118,7 @@ func (a *AvgSampleWithMin) updateMaps() {
 	a.lock.Lock()
 	tmpCounts := a.currentCounts
 	a.currentCounts = make(map[string]float64)
+	goalSampleRate := a.GoalSampleRate
 	a.lock.Unlock()
 	newSavedSampleRates := make(map[string]int)
 	// short circuit if no traffic
@@ -136,7 +137,7 @@ func (a *AvgSampleWithMin) updateMaps() {
 	for _, count := range tmpCounts {
 		sumEvents += count
 	}
-	goalCount := float64(sumEvents) / float64(a.GoalSampleRate)
+	goalCount := float64(sumEvents) / float64(goalSampleRate)
 	// check to see if we fall below the minimum
 	if sumEvents < float64(a.MinEventsPerSec)*a.ClearFrequencyDuration.Seconds() {
 		// we still need to go through each key to set sample rates individually
@@ -205,6 +206,15 @@ func (a *AvgSampleWithMin) SaveState() ([]byte, error) {
 // LoadState is not implemented
 func (a *AvgSampleWithMin) LoadState(state []byte) error {
 	return nil
+}
+
+// SetGoalSampleRate updates the goal sample rate in a concurrency-safe manner
+func (a *AvgSampleWithMin) SetGoalSampleRate(rate int) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if rate > 0 {
+		a.GoalSampleRate = rate
+	}
 }
 
 func (a *AvgSampleWithMin) GetMetrics(prefix string) map[string]int64 {

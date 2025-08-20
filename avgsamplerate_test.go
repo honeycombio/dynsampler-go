@@ -13,6 +13,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestSetGoalSampleRate(t *testing.T) {
+	a := &AvgSampleRate{
+		GoalSampleRate: 20,
+	}
+
+	// Test SetGoalSampleRate method
+	a.SetGoalSampleRate(25)
+	assert.Equal(t, 25, a.GoalSampleRate)
+
+	// Test that invalid values are ignored
+	a.SetGoalSampleRate(0)
+	assert.Equal(t, 25, a.GoalSampleRate)
+
+	a.SetGoalSampleRate(-5)
+	assert.Equal(t, 25, a.GoalSampleRate)
+}
+
 func TestAvgSampleUpdateMaps(t *testing.T) {
 	a := &AvgSampleRate{
 		GoalSampleRate: 20,

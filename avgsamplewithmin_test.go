@@ -10,6 +10,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestAvgSampleWithMinSetGoalSampleRate(t *testing.T) {
+	a := &AvgSampleWithMin{
+		GoalSampleRate:         20,
+		MinEventsPerSec:        50,
+		ClearFrequencyDuration: 30 * time.Second,
+	}
+
+	// Test SetGoalSampleRate method
+	a.SetGoalSampleRate(30)
+	assert.Equal(t, 30, a.GoalSampleRate)
+
+	// Test that invalid values are ignored
+	a.SetGoalSampleRate(0)
+	assert.Equal(t, 30, a.GoalSampleRate)
+
+	a.SetGoalSampleRate(-5)
+	assert.Equal(t, 30, a.GoalSampleRate)
+}
+
 func TestAvgSampleWithMinUpdateMaps(t *testing.T) {
 	a := &AvgSampleWithMin{
 		GoalSampleRate:         20,

@@ -9,6 +9,23 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestEMAThroughputSetGoalThroughputPerSec(t *testing.T) {
+	e := &EMAThroughput{
+		GoalThroughputPerSec: 100,
+	}
+
+	// Test SetGoalThroughputPerSec method
+	e.SetGoalThroughputPerSec(200)
+	assert.Equal(t, 200, e.GoalThroughputPerSec)
+
+	// Test that invalid values are ignored
+	e.SetGoalThroughputPerSec(0)
+	assert.Equal(t, 200, e.GoalThroughputPerSec)
+
+	e.SetGoalThroughputPerSec(-10)
+	assert.Equal(t, 200, e.GoalThroughputPerSec)
+}
+
 func TestUpdateEMAThroughput(t *testing.T) {
 	e := &EMAThroughput{
 		movingAverage: make(map[string]float64),

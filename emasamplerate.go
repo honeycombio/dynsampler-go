@@ -215,9 +215,10 @@ func (e *EMASampleRate) updateMaps() {
 	// so we need to grab the lock when we update it.
 	e.lock.Lock()
 	e.burstThreshold = sumEvents * e.BurstMultiple
+	goalSampleRate := e.GoalSampleRate
 	e.lock.Unlock()
 
-	goalCount := float64(sumEvents) / float64(e.GoalSampleRate)
+	goalCount := float64(sumEvents) / float64(goalSampleRate)
 	// goalRatio is the goalCount divided by the sum of all the log values - it
 	// determines what percentage of the total event space belongs to each key
 	var logSum float64
@@ -361,6 +362,15 @@ func (e *EMASampleRate) LoadState(state []byte) error {
 	e.haveData = true
 
 	return nil
+}
+
+// SetGoalSampleRate updates the goal sample rate in a concurrency-safe manner
+func (e *EMASampleRate) SetGoalSampleRate(rate int) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	if rate > 0 {
+		e.GoalSampleRate = rate
+	}
 }
 
 func (e *EMASampleRate) GetMetrics(prefix string) map[string]int64 {

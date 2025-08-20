@@ -108,6 +108,7 @@ func (t *TotalThroughput) updateMaps() {
 	t.lock.Lock()
 	tmpCounts := t.currentCounts
 	t.currentCounts = make(map[string]int)
+	goalThroughputPerSec := t.GoalThroughputPerSec
 	t.lock.Unlock()
 	// short circuit if no traffic
 	numKeys := len(tmpCounts)
@@ -119,7 +120,7 @@ func (t *TotalThroughput) updateMaps() {
 		return
 	}
 	// figure out our target throughput per key over ClearFrequencyDuration
-	totalGoalThroughput := float64(t.GoalThroughputPerSec) * t.ClearFrequencyDuration.Seconds()
+	totalGoalThroughput := float64(goalThroughputPerSec) * t.ClearFrequencyDuration.Seconds()
 	// split the total throughput equally across the number of keys.
 	throughputPerKey := float64(totalGoalThroughput) / float64(numKeys)
 	// for each key, calculate sample rate by dividing counted events by the
@@ -173,6 +174,15 @@ func (t *TotalThroughput) SaveState() ([]byte, error) {
 // LoadState is not implemented
 func (t *TotalThroughput) LoadState(state []byte) error {
 	return nil
+}
+
+// SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner
+func (t *TotalThroughput) SetGoalThroughputPerSec(throughput int) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if throughput > 0 {
+		t.GoalThroughputPerSec = throughput
+	}
 }
 
 func (t *TotalThroughput) GetMetrics(prefix string) map[string]int64 {
