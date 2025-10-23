@@ -17,7 +17,7 @@ filters_publish: &filters_publish
 matrix_goversions: &matrix_goversions
   matrix:
     parameters:
-      goversion: ["20", "21", "22", "23", "24"]
+      goversion: ["20", "21", "22", "23", "24", "25"]
 
 # Default version of Go to use for Go steps
 default_goversion: &default_goversion "20"
