@@ -1,5 +1,24 @@
 # dynsampler-go changelog
 
+## 0.6.4 2026-02-03
+
+This version adds the ability to dynamically adjust sampling goals and fixes a concurrency bug in the WindowedThroughput sampler.
+
+## What's Changed
+
+### 💡 Enhancements
+
+- feat: add SetGoalSampleRate method by @ianwilkes in https://github.com/honeycombio/dynsampler-go/pull/88
+
+### 🐛 Fixes
+
+- fix: fix incorrect locking in WindowedThroughput by @ianwilkes in https://github.com/honeycombio/dynsampler-go/pull/87
+
+### 🛠 Maintenance
+
+- maint: add Go 1.25 to the test matrix by @robbkidd in https://github.com/honeycombio/dynsampler-go/pull/90
+- maint(deps): bump github.com/stretchr/testify from 1.10.0 to 1.11.1 by @dependabot in https://github.com/honeycombio/dynsampler-go/pull/89
+
 ## 0.6.3 2025-07-09
 
 This version improves the performance of `GetMetrics` function by reducing repeated dynamic string operations for metric keys creation.
