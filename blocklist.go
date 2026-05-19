@@ -6,6 +6,91 @@ import (
 	"sync"
 )
 
+// ShardedBlockList distributes keys across numShards independent UnboundedBlockLists,
+// each with its own lock. IncrementKey contention drops by ~numShards under uniform
+// key distribution. AggregateCounts acquires each shard's lock in turn and merges results.
+//
+// When maxKeys > 0 a global key guard is layered on top:
+//   - Existing keys take a lock-free fast path via sync.Map.Load.
+//   - New keys acquire newKeyMu (contended only on first appearance of a key).
+//   - AggregateCounts GCs keys that have fallen out of the lookback window so
+//     new keys can be admitted again once old ones age out.
+type ShardedBlockList struct {
+	shards    []*UnboundedBlockList
+	numShards uint32
+
+	// used only when maxKeys > 0
+	maxKeys   int
+	newKeyMu  sync.Mutex  // serialises new-key admission; not held on the hot path
+	keyCount  int         // protected by newKeyMu
+	knownKeys sync.Map    // map[string]struct{}; written once per key, read on every call
+}
+
+// NewShardedBlockList creates a sharded blocklist with numShards shards.
+// If maxKeys > 0 the total number of distinct tracked keys is capped globally.
+func NewShardedBlockList(numShards, maxKeys int) BlockList {
+	shards := make([]*UnboundedBlockList, numShards)
+	for i := range shards {
+		shards[i] = NewUnboundedBlockList().(*UnboundedBlockList)
+	}
+	return &ShardedBlockList{shards: shards, numShards: uint32(numShards), maxKeys: maxKeys}
+}
+
+// shardFor returns the shard responsible for key using inline FNV-1a.
+func (s *ShardedBlockList) shardFor(key string) *UnboundedBlockList {
+	var h uint32 = 2166136261
+	for i := 0; i < len(key); i++ {
+		h ^= uint32(key[i])
+		h *= 16777619
+	}
+	return s.shards[h%s.numShards]
+}
+
+func (s *ShardedBlockList) IncrementKey(key string, keyIndex int64, count int) error {
+	if s.maxKeys > 0 {
+		if _, exists := s.knownKeys.Load(key); !exists {
+			// New key — serialise admission check.
+			s.newKeyMu.Lock()
+			// Double-check: another goroutine may have added this key while we waited.
+			if _, exists := s.knownKeys.Load(key); !exists {
+				if s.keyCount >= s.maxKeys {
+					s.newKeyMu.Unlock()
+					return MaxSizeError{key: key}
+				}
+				s.knownKeys.Store(key, struct{}{})
+				s.keyCount++
+			}
+			s.newKeyMu.Unlock()
+		}
+	}
+	return s.shardFor(key).IncrementKey(key, keyIndex, count)
+}
+
+func (s *ShardedBlockList) AggregateCounts(currentIndex int64, lookbackIndex int64) map[string]int {
+	merged := make(map[string]int)
+	for _, shard := range s.shards {
+		for k, v := range shard.AggregateCounts(currentIndex, lookbackIndex) {
+			merged[k] += v
+		}
+	}
+
+	if s.maxKeys > 0 {
+		// GC: any key absent from the merged window has aged out; remove it so
+		// new keys can be admitted once old ones expire.
+		s.newKeyMu.Lock()
+		s.knownKeys.Range(func(k, _ interface{}) bool {
+			if _, inWindow := merged[k.(string)]; !inWindow {
+				s.knownKeys.Delete(k)
+				s.keyCount--
+			}
+			return true
+		})
+		s.newKeyMu.Unlock()
+	}
+
+	return merged
+}
+
 // BlockList is a data structure that keeps track of how often keys occur in a given time range in
 // order to perform windowed lookback sampling. BlockList operates with monotonically increasing
 // indexes, instead of timestamps.

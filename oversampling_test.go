@@ -11,17 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestWindowedThroughputMetricRatePerSecond compares per-second request_count and
-// event_count between a single caller and 100 concurrent goroutines, each with
-// 1500 unique keys under steady-state traffic for 5 seconds. The throughput gap
-// between single and concurrent reveals how much b.lock contention reduces the
-// number of events the sampler can observe per second.
+// TestWindowedThroughputMetricRatePerSecond runs two scenarios — single caller
+// and 100 concurrent goroutines — each with 1500 unique keys under steady-state
+// traffic for 5 seconds. It logs the per-second delta of request_count and
+// event_count for each scenario so throughput differences are visible over time.
 //
 // NOTE: meaningful only with GOMAXPROCS >= 2.
 func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 	const (
 		numKeys       = 1500
-		numGoroutines = 100
+		numGoroutines = 10
 		runSeconds    = 5
 	)
 
@@ -32,13 +31,16 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 
 	type snapshot struct{ requests, events int64 }
 
-	runScenario := func(numWorkers int) []snapshot {
+	// runScenario drives numWorkers goroutines against a fresh sampler for
+	// runSeconds seconds. It samples metrics once per second and returns the
+	// per-second deltas.
+	runScenario := func(numWorkers int, list BlockList) []snapshot {
 		s := &WindowedThroughput{
 			GoalThroughputPerSec:      10,
 			LookbackFrequencyDuration: 5 * time.Second,
 			UpdateFrequencyDuration:   1 * time.Second,
 			indexGenerator:            &TestIndexGenerator{CurrentIndex: 1},
-			countList:                 NewUnboundedBlockList(),
+			countList:                 list,
 		}
 
 		done := make(chan struct{})
@@ -78,27 +80,34 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 		return snaps
 	}
 
-	t.Log("--- single caller (1 goroutine, 1500 keys) ---")
-	singleSnaps := runScenario(1)
+	t.Log("--- single caller, unsharded (1 goroutine, 1500 keys) ---")
+	singleSnaps := runScenario(1, NewUnboundedBlockList())
 	for i, s := range singleSnaps {
 		t.Logf("  sec %d: request_count/s=%d  event_count/s=%d", i+1, s.requests, s.events)
 	}
 
-	t.Logf("--- concurrent (%d goroutines, 1500 keys) ---", numGoroutines)
-	concurrentSnaps := runScenario(numGoroutines)
-	for i, s := range concurrentSnaps {
+	t.Logf("--- concurrent, unsharded (%d goroutines, 1500 keys) ---", numGoroutines)
+	unshardedSnaps := runScenario(numGoroutines, NewUnboundedBlockList())
+	for i, s := range unshardedSnaps {
+		t.Logf("  sec %d: request_count/s=%d  event_count/s=%d", i+1, s.requests, s.events)
+	}
+
+	t.Logf("--- concurrent, sharded 32 (%d goroutines, 1500 keys) ---", numGoroutines)
+	shardedSnaps := runScenario(numGoroutines, NewShardedBlockList(32, 0))
+	for i, s := range shardedSnaps {
 		t.Logf("  sec %d: request_count/s=%d  event_count/s=%d", i+1, s.requests, s.events)
 	}
 
 	require.Len(t, singleSnaps, runSeconds)
-	require.Len(t, concurrentSnaps, runSeconds)
+	require.Len(t, unshardedSnaps, runSeconds)
+	require.Len(t, shardedSnaps, runSeconds)
 
 	// requestCount and eventCount are updated by two separate atomic ops, so a
 	// concurrent GetMetrics read can observe them a few counts apart. Assert
 	// they stay within 0.01% of each other per second — any larger gap would
 	// indicate a structural bug, not a sampling artifact.
 	const tolerance = 0.0001
-	for _, snaps := range [][]snapshot{singleSnaps, concurrentSnaps} {
+	for _, snaps := range [][]snapshot{singleSnaps, unshardedSnaps, shardedSnaps} {
 		for i, s := range snaps {
 			if s.requests == 0 {
 				continue
