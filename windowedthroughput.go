@@ -3,6 +3,7 @@ package dynsampler
 import (
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -49,18 +50,23 @@ type WindowedThroughput struct {
 	// If MaxKeys is set to 0 (default), there is no upper bound on the number of distinct keys.
 	MaxKeys int
 
-	savedSampleRates map[string]int
+	// savedSampleRates is swapped atomically by updateMaps; GetSampleRateMulti
+	// reads it without holding any lock. Always stores map[string]int.
+	savedSampleRates atomic.Value
 	done             chan struct{}
 	countList        BlockList
 
 	indexGenerator IndexGenerator
 
+	// lock guards GoalThroughputPerSec (float64, no atomic primitive) and the
+	// one-time prefix initialisation in GetMetrics. It is NOT held on the hot
+	// GetSampleRateMulti path.
 	lock sync.Mutex
 
-	// metrics
+	// metrics — updated with sync/atomic; no lock required on the read path
 	requestCount    int64
 	eventCount      int64
-	numKeys         int
+	numKeys         int64
 	prefix          string
 	requestCountKey string
 	eventCountKey   string
@@ -118,7 +124,7 @@ func (t *WindowedThroughput) Start() error {
 	}
 
 	// Initialize internal variables.
-	t.savedSampleRates = make(map[string]int)
+	t.savedSampleRates.Store(make(map[string]int))
 	t.done = make(chan struct{})
 	// Initialize the index generator. Each UpdateFrequencyDuration represents a single tick of the
 	// index.
@@ -158,10 +164,8 @@ func (t *WindowedThroughput) updateMaps() {
 	numKeys := len(aggregateCounts)
 	if numKeys == 0 {
 		// no traffic during the last period.
-		t.lock.Lock()
-		defer t.lock.Unlock()
-		t.numKeys = 0
-		t.savedSampleRates = make(map[string]int)
+		atomic.StoreInt64(&t.numKeys, 0)
+		t.savedSampleRates.Store(make(map[string]int))
 		return
 	}
 	// figure out our target throughput per key over the lookback window.
@@ -170,19 +174,18 @@ func (t *WindowedThroughput) updateMaps() {
 	t.lock.Unlock()
 	totalGoalThroughput := goalThroughputPerSec * t.LookbackFrequencyDuration.Seconds()
 	// split the total throughput equally across the number of keys.
-	throughputPerKey := float64(totalGoalThroughput) / float64(numKeys)
+	throughputPerKey := totalGoalThroughput / float64(numKeys)
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
-	newSavedSampleRates := make(map[string]int)
+	newSavedSampleRates := make(map[string]int, numKeys)
 	for k, v := range aggregateCounts {
-		rate := int(math.Max(1, (float64(v) / float64(throughputPerKey))))
+		rate := int(math.Max(1, float64(v)/throughputPerKey))
 		newSavedSampleRates[k] = rate
 	}
-	// save newly calculated sample rates
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	t.savedSampleRates = newSavedSampleRates
-	t.numKeys = numKeys
+	// swap in the new rates; readers in GetSampleRateMulti see either the old
+	// or new map atomically — no torn reads.
+	atomic.StoreInt64(&t.numKeys, int64(numKeys))
+	t.savedSampleRates.Store(newSavedSampleRates)
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
@@ -194,13 +197,11 @@ func (t *WindowedThroughput) GetSampleRate(key string) int {
 // GetSampleRateMulti takes a key representing count spans and returns the
 // appropriate sample rate for that key.
 func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
-	t.lock.Lock()
-	defer t.lock.Unlock()
+	atomic.AddInt64(&t.requestCount, 1)
+	atomic.AddInt64(&t.eventCount, int64(count))
 
-	t.requestCount++
-	t.eventCount += int64(count)
-
-	// Insert the new key into the map.
+	// Insert the new key into the map. IncrementKey is protected by its own
+	// internal lock inside BlockList; t.lock is not needed here.
 	current := t.indexGenerator.GetCurrentIndex()
 	err := t.countList.IncrementKey(key, current, count)
 
@@ -209,7 +210,11 @@ func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
 		return 0
 	}
 
-	if rate, found := t.savedSampleRates[key]; found {
+	// Load the most recently published rates map. The comma-ok type assertion
+	// is safe even if the Value has never been stored (returns nil map, which
+	// allows reads but returns zero values — equivalent to "key not found").
+	rates, _ := t.savedSampleRates.Load().(map[string]int)
+	if rate, found := rates[key]; found {
 		return rate
 	}
 	return 0
@@ -236,22 +241,24 @@ func (t *WindowedThroughput) SetGoalThroughputPerSec(throughput int) {
 
 func (t *WindowedThroughput) GetMetrics(prefix string) map[string]int64 {
 	t.lock.Lock()
-	defer t.lock.Unlock()
 	if t.prefix == "" {
 		t.prefix = prefix
 		t.requestCountKey = t.prefix + requestCountSuffix
 		t.eventCountKey = t.prefix + eventCountSuffix
 		t.keyspaceSizeKey = t.prefix + keyspaceSizeSuffix
 	}
-
 	if t.prefix != prefix {
-		return nil // if the prefix doesn't match, return nil
+		t.lock.Unlock()
+		return nil
 	}
+	reqKey := t.requestCountKey
+	evtKey := t.eventCountKey
+	kszKey := t.keyspaceSizeKey
+	t.lock.Unlock()
 
-	mets := map[string]int64{
-		t.requestCountKey: t.requestCount,
-		t.eventCountKey:   t.eventCount,
-		t.keyspaceSizeKey: int64(t.numKeys),
+	return map[string]int64{
+		reqKey: atomic.LoadInt64(&t.requestCount),
+		evtKey: atomic.LoadInt64(&t.eventCount),
+		kszKey: atomic.LoadInt64(&t.numKeys),
 	}
-	return mets
 }
