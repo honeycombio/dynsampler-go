@@ -5,7 +5,6 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
-	"unsafe"
 )
 
 // BlockList is a data structure that keeps track of how often keys occur in a given time range in
@@ -26,9 +25,8 @@ type Block struct {
 
 // UnboundedBlockList can have unlimited keys.
 type UnboundedBlockList struct {
-	head         *Block        // sentinel node; list structure protected by lock
-	currentBlock unsafe.Pointer // *Block; the block for the current time index, updated atomically
-	lock         sync.Mutex    // held only when the time index advances (~once/s)
+	head *Block     // sentinel node; list structure protected by lock
+	lock sync.Mutex // held only when the time index advances (~once/s)
 }
 
 // Creates a new BlockList with a sentinel node.
@@ -58,29 +56,12 @@ func incrementInBlock(block *Block, key string, count int) {
 }
 
 // IncrementKey increments the count for key in the block for keyIndex.
-// Hot path (same index every call within a second): fully lock-free — reads
-// currentBlock atomically and writes into the sync.Map without any mutex.
-// Cold path (index rollover, ~once per UpdateFrequency): acquires lock briefly
-// to prepend a new block and update currentBlock.
 func (b *UnboundedBlockList) IncrementKey(key string, keyIndex int64, count int) error {
-	// Hot path: currentBlock matches — no lock needed.
-	// AggregateCounts never reads the current block (startIndex = currentIndex-1),
-	// so there is no conflict between IncrementKey and AggregateCounts here.
-	cur := (*Block)(atomic.LoadPointer(&b.currentBlock))
-	if cur != nil && cur.index == keyIndex {
-		incrementInBlock(cur, key, count)
-		return nil
-	}
-
-	// Cold path: index has rolled over, create a new block.
 	b.lock.Lock()
-	// Double-check after acquiring the lock; another goroutine may have already
-	// created the block for this index while we waited.
-	cur = (*Block)(atomic.LoadPointer(&b.currentBlock))
+	cur := b.head.next
 	if cur == nil || cur.index != keyIndex {
 		newBlock := &Block{index: keyIndex, next: b.head.next}
 		b.head.next = newBlock
-		atomic.StorePointer(&b.currentBlock, unsafe.Pointer(newBlock))
 		cur = newBlock
 	}
 	b.lock.Unlock()
@@ -178,11 +159,10 @@ func (b *BoundedBlockList) IncrementKey(key string, keyIndex int64, count int) e
 		b.baseList.lock.Unlock()
 		return MaxSizeError{key: key}
 	}
-	cur := (*Block)(atomic.LoadPointer(&b.baseList.currentBlock))
+	cur := b.baseList.head.next
 	if cur == nil || cur.index != keyIndex {
 		newBlock := &Block{index: keyIndex, next: b.baseList.head.next}
 		b.baseList.head.next = newBlock
-		atomic.StorePointer(&b.baseList.currentBlock, unsafe.Pointer(newBlock))
 		cur = newBlock
 	}
 	b.baseList.lock.Unlock()
