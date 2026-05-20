@@ -50,11 +50,6 @@ type WindowedThroughput struct {
 	// If MaxKeys is set to 0 (default), there is no upper bound on the number of distinct keys.
 	MaxKeys int
 
-	// NumShards controls how many independent shards the underlying BlockList is split into
-	// when MaxKeys is 0. Higher values reduce lock contention under high concurrency at the
-	// cost of slightly more work in AggregateCounts. Default 32. Has no effect when MaxKeys > 0.
-	NumShards int
-
 	// savedSampleRates is swapped atomically by updateMaps; GetSampleRateMulti
 	// reads it without holding any lock. Always stores map[string]int.
 	savedSampleRates atomic.Value
@@ -122,10 +117,11 @@ func (t *WindowedThroughput) Start() error {
 	}
 
 	// Initialize countList.
-	if t.NumShards == 0 {
-		t.NumShards = 32
+	if t.MaxKeys > 0 {
+		t.countList = NewBoundedBlockList(t.MaxKeys)
+	} else {
+		t.countList = NewUnboundedBlockList()
 	}
-	t.countList = NewShardedBlockList(t.NumShards, t.MaxKeys)
 
 	// Initialize internal variables.
 	t.savedSampleRates.Store(make(map[string]int))

@@ -34,13 +34,13 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 	// runScenario drives numWorkers goroutines against a fresh sampler for
 	// runSeconds seconds. It samples metrics once per second and returns the
 	// per-second deltas.
-	runScenario := func(numWorkers int, list BlockList) []snapshot {
+	runScenario := func(numWorkers int) []snapshot {
 		s := &WindowedThroughput{
 			GoalThroughputPerSec:      10,
 			LookbackFrequencyDuration: 5 * time.Second,
 			UpdateFrequencyDuration:   1 * time.Second,
 			indexGenerator:            &TestIndexGenerator{CurrentIndex: 1},
-			countList:                 list,
+			countList:                 NewUnboundedBlockList(),
 		}
 
 		done := make(chan struct{})
@@ -80,34 +80,27 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 		return snaps
 	}
 
-	t.Log("--- single caller, unsharded (1 goroutine, 1500 keys) ---")
-	singleSnaps := runScenario(1, NewUnboundedBlockList())
+	t.Log("--- single caller (1 goroutine, 1500 keys) ---")
+	singleSnaps := runScenario(1)
 	for i, s := range singleSnaps {
 		t.Logf("  sec %d: request_count/s=%d  event_count/s=%d", i+1, s.requests, s.events)
 	}
 
-	t.Logf("--- concurrent, unsharded (%d goroutines, 1500 keys) ---", numGoroutines)
-	unshardedSnaps := runScenario(numGoroutines, NewUnboundedBlockList())
-	for i, s := range unshardedSnaps {
-		t.Logf("  sec %d: request_count/s=%d  event_count/s=%d", i+1, s.requests, s.events)
-	}
-
-	t.Logf("--- concurrent, sharded 32 (%d goroutines, 1500 keys) ---", numGoroutines)
-	shardedSnaps := runScenario(numGoroutines, NewShardedBlockList(32, 0))
-	for i, s := range shardedSnaps {
+	t.Logf("--- concurrent (%d goroutines, 1500 keys) ---", numGoroutines)
+	concurrentSnaps := runScenario(numGoroutines)
+	for i, s := range concurrentSnaps {
 		t.Logf("  sec %d: request_count/s=%d  event_count/s=%d", i+1, s.requests, s.events)
 	}
 
 	require.Len(t, singleSnaps, runSeconds)
-	require.Len(t, unshardedSnaps, runSeconds)
-	require.Len(t, shardedSnaps, runSeconds)
+	require.Len(t, concurrentSnaps, runSeconds)
 
 	// requestCount and eventCount are updated by two separate atomic ops, so a
 	// concurrent GetMetrics read can observe them a few counts apart. Assert
 	// they stay within 0.01% of each other per second — any larger gap would
 	// indicate a structural bug, not a sampling artifact.
 	const tolerance = 0.0001
-	for _, snaps := range [][]snapshot{singleSnaps, unshardedSnaps, shardedSnaps} {
+	for _, snaps := range [][]snapshot{singleSnaps, concurrentSnaps} {
 		for i, s := range snaps {
 			if s.requests == 0 {
 				continue
