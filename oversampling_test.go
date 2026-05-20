@@ -43,6 +43,9 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 		}
 		s.Start()
 
+		// only count events after the first updateMaps tick fires
+		warmupEnd := time.Now().Add(s.UpdateFrequencyDuration + 50*time.Millisecond)
+
 		type result struct {
 			numTries int
 			numKept  int
@@ -66,12 +69,15 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 							return
 						default:
 							result := s.GetSampleRateMulti(keys[i%numKeys], 1)
-							numTries++
-							if result == 0 {
-								result = 1
-							}
-							if rand.Intn(result) == 0 {
-								numKept++
+							if time.Now().After(warmupEnd) {
+
+								numTries++
+								if result == 0 {
+									result = 1
+								}
+								if rand.Intn(result) == 0 {
+									numKept++
+								}
 							}
 						}
 					}
