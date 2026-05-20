@@ -1,6 +1,6 @@
 module github.com/honeycombio/dynsampler-go
 
-go 1.17
+go 1.25.0
 
 require github.com/stretchr/testify v1.11.1
 

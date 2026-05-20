@@ -18,15 +18,20 @@ type BlockList interface {
 }
 
 type Block struct {
-	index      int64 // MUST be monotonically increasing.
+	index      int64    // MUST be monotonically increasing.
 	keyToCount sync.Map // map[string]*int64; values incremented atomically
 	next       *Block
 }
 
 // UnboundedBlockList can have unlimited keys.
 type UnboundedBlockList struct {
-	head *Block     // sentinel node; list structure protected by lock
-	lock sync.Mutex // held only when the time index advances (~once/s)
+	// writeBlock is the live write target for the current index. Stored
+	// atomically so IncrementKey skips the lock on the common path.
+	// Never part of the historical list rooted at head; moved there only
+	// when the index advances. Stores *Block; nil before first write.
+	writeBlock atomic.Value
+	lock       sync.Mutex // held only when the time index advances (~once/s)
+	head       *Block     // sentinel node; historical list protected by lock
 }
 
 // Creates a new BlockList with a sentinel node.
@@ -57,16 +62,26 @@ func incrementInBlock(block *Block, key string, count int) {
 
 // IncrementKey increments the count for key in the block for keyIndex.
 func (b *UnboundedBlockList) IncrementKey(key string, keyIndex int64, count int) error {
+	// Fast path: current write block already exists for this index.
+	if wb, _ := b.writeBlock.Load().(*Block); wb != nil && wb.index == keyIndex {
+		incrementInBlock(wb, key, count)
+		return nil
+	}
+	// Slow path: index advanced. Rotate under lock.
 	b.lock.Lock()
-	cur := b.head.next
-	if cur == nil || cur.index != keyIndex {
-		newBlock := &Block{index: keyIndex, next: b.head.next}
-		b.head.next = newBlock
-		cur = newBlock
+	wb, _ := b.writeBlock.Load().(*Block)
+	if wb == nil || wb.index != keyIndex {
+		newBlock := &Block{index: keyIndex}
+		if wb != nil {
+			// Move old write block into the historical list.
+			wb.next = b.head.next
+			b.head.next = wb
+		}
+		b.writeBlock.Store(newBlock)
+		wb = newBlock
 	}
 	b.lock.Unlock()
-
-	incrementInBlock(cur, key, count)
+	incrementInBlock(wb, key, count)
 	return nil
 }
 
@@ -79,7 +94,20 @@ func (b *UnboundedBlockList) AggregateCounts(
 ) map[string]int {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-	return b.doAggregation(currentIndex, lookbackIndex)
+	counts := b.doAggregation(currentIndex, lookbackIndex)
+	// writeBlock is excluded from the historical list. Include it here if the
+	// index has advanced past it but no write has triggered rotation yet.
+	startIndex := currentIndex - 1
+	finishIndex := startIndex - lookbackIndex
+	if wb, _ := b.writeBlock.Load().(*Block); wb != nil && wb.index <= startIndex && wb.index > finishIndex {
+		wb.keyToCount.Range(func(k, v interface{}) bool {
+			if c := int(atomic.LoadInt64(v.(*int64))); c > 0 {
+				counts[k.(string)] += c
+			}
+			return true
+		})
+	}
+	return counts
 }
 
 // Split out the actual functionality into doAggregation to support better locking semantics.
@@ -159,14 +187,18 @@ func (b *BoundedBlockList) IncrementKey(key string, keyIndex int64, count int) e
 		b.baseList.lock.Unlock()
 		return MaxSizeError{key: key}
 	}
-	cur := b.baseList.head.next
-	if cur == nil || cur.index != keyIndex {
-		newBlock := &Block{index: keyIndex, next: b.baseList.head.next}
-		b.baseList.head.next = newBlock
-		cur = newBlock
+	wb, _ := b.baseList.writeBlock.Load().(*Block)
+	if wb == nil || wb.index != keyIndex {
+		newBlock := &Block{index: keyIndex}
+		if wb != nil {
+			wb.next = b.baseList.head.next
+			b.baseList.head.next = wb
+		}
+		b.baseList.writeBlock.Store(newBlock)
+		wb = newBlock
 	}
 	b.baseList.lock.Unlock()
-	incrementInBlock(cur, key, count)
+	incrementInBlock(wb, key, count)
 	return nil
 }
 
@@ -199,9 +231,16 @@ func (b *BoundedBlockList) AggregateCounts(
 	b.baseList.lock.Lock()
 	defer b.baseList.lock.Unlock()
 	aggregateCounts = b.baseList.doAggregation(currentIndex, lookbackIndex)
-
 	startIndex := currentIndex - 1
 	finishIndex := startIndex - lookbackIndex
+	if wb, _ := b.baseList.writeBlock.Load().(*Block); wb != nil && wb.index <= startIndex && wb.index > finishIndex {
+		wb.keyToCount.Range(func(k, v interface{}) bool {
+			if c := int(atomic.LoadInt64(v.(*int64))); c > 0 {
+				aggregateCounts[k.(string)] += c
+			}
+			return true
+		})
+	}
 
 	for key, indexes := range b.keyToIndexes {
 		dropIdx := -1

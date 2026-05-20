@@ -2,6 +2,7 @@ package dynsampler
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,9 +20,9 @@ import (
 // NOTE: meaningful only with GOMAXPROCS >= 2.
 func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 	const (
-		numKeys       = 1500
-		numGoroutines = 10
-		runSeconds    = 5
+		numKeys       = 100
+		numGoroutines = 2
+		runSeconds    = 15
 	)
 
 	keys := make([]string, numKeys)
@@ -36,25 +37,43 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 	// per-second deltas.
 	runScenario := func(numWorkers int) []snapshot {
 		s := &WindowedThroughput{
-			GoalThroughputPerSec:      10,
+			GoalThroughputPerSec:      1000,
 			LookbackFrequencyDuration: 5 * time.Second,
 			UpdateFrequencyDuration:   1 * time.Second,
-			indexGenerator:            &TestIndexGenerator{CurrentIndex: 1},
-			countList:                 NewUnboundedBlockList(),
 		}
+		s.Start()
 
+		type result struct {
+			numTries int
+			numKept  int
+		}
+		results := make(chan result, numWorkers)
 		done := make(chan struct{})
 		var wg sync.WaitGroup
 		for g := 0; g < numWorkers; g++ {
 			wg.Add(1)
 			go func(id int) {
 				defer wg.Done()
+				var numTries, numKept int
 				for i := 0; ; i++ {
-					select {
-					case <-done:
-						return
-					default:
-						s.GetSampleRateMulti(keys[i%numKeys], 1)
+					for j := 0; j <= i; j++ {
+						select {
+						case <-done:
+							results <- result{
+								numTries: numTries,
+								numKept:  numKept,
+							}
+							return
+						default:
+							result := s.GetSampleRateMulti(keys[i%numKeys], 1)
+							numTries++
+							if result == 0 {
+								result = 1
+							}
+							if rand.Intn(result) == 0 {
+								numKept++
+							}
+						}
 					}
 				}
 			}(g)
@@ -77,6 +96,16 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 		}
 		close(done)
 		wg.Wait()
+		close(results)
+
+		var totalTries, totalKept int
+		for r := range results {
+			totalTries += r.numTries
+			totalKept += r.numKept
+		}
+
+		fmt.Println("totalTries", totalTries, "totalKept", totalKept)
+		fmt.Println("ratio", totalTries/totalKept)
 		return snaps
 	}
 
