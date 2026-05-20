@@ -118,7 +118,12 @@ func (b *UnboundedBlockList) doAggregation(
 		// Start aggregation at current index - 1.
 		if front.index <= startIndex {
 			front.keyToCount.Range(func(k, v interface{}) bool {
-				aggregateCounts[k.(string)] += int(atomic.LoadInt64(v.(*int64)))
+				// A key may be stored in the sync.Map with a zero count if
+				// incrementInBlock is mid-flight (between LoadOrStore and
+				// atomic.AddInt64). Skip those entries to avoid inflating numKeys.
+				if count := int(atomic.LoadInt64(v.(*int64))); count > 0 {
+					aggregateCounts[k.(string)] += count
+				}
 				return true
 			})
 		}
@@ -166,6 +171,7 @@ func NewBoundedBlockList(maxKeys int) BlockList {
 
 // IncrementKey will always increment an existing key. If the key is new, it will be rejected if
 // there are maxKeys existing entries.
+// Lock is held for tryInsert + block creation, released before the map write.
 func (b *BoundedBlockList) IncrementKey(key string, keyIndex int64, count int) error {
 	b.baseList.lock.Lock()
 	if !b.tryInsert(key, keyIndex) {
