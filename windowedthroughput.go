@@ -29,6 +29,12 @@ import (
 // Because our lookback window is _rolling_ instead of static, we need a special datastructure to
 // quickly and efficiently store our data. The code and additional information for this
 // datastructure can be found in blocklist.go.
+
+type lastKnownEntry struct {
+	rate      int
+	expiresAt time.Time
+}
+
 type WindowedThroughput struct {
 	// UpdateFrequency is how often the sampling rate is recomputed, default is 1s.
 	UpdateFrequencyDuration time.Duration
@@ -49,7 +55,14 @@ type WindowedThroughput struct {
 	// If MaxKeys is set to 0 (default), there is no upper bound on the number of distinct keys.
 	MaxKeys int
 
+	// RateRetentionDuration controls how long to retain the last known sample rate for a key
+	// after it falls out of the lookback window. When a key reappears within this duration it
+	// uses its historical rate instead of defaulting to 1, preventing a burst of over-sampled
+	// traffic on reappearance. Default is 5 * LookbackFrequencyDuration.
+	RateRetentionDuration time.Duration
+
 	savedSampleRates map[string]int
+	lastKnownRates   map[string]lastKnownEntry
 	done             chan struct{}
 	countList        BlockList
 
@@ -118,8 +131,13 @@ func (t *WindowedThroughput) Start() error {
 		t.countList = NewUnboundedBlockList()
 	}
 
+	if t.RateRetentionDuration == 0 {
+		t.RateRetentionDuration = 5 * t.LookbackFrequencyDuration
+	}
+
 	// Initialize internal variables.
 	t.savedSampleRates = make(map[string]int)
+	t.lastKnownRates = make(map[string]lastKnownEntry)
 	t.done = make(chan struct{})
 	// Initialize the index generator. Each UpdateFrequencyDuration represents a single tick of the
 	// index.
@@ -161,6 +179,10 @@ func (t *WindowedThroughput) updateMaps() {
 		// no traffic during the last period.
 		t.lock.Lock()
 		defer t.lock.Unlock()
+		now := time.Now()
+		for k, rate := range t.savedSampleRates {
+			t.lastKnownRates[k] = lastKnownEntry{rate: rate, expiresAt: now.Add(t.RateRetentionDuration)}
+		}
 		t.numKeys = 0
 		t.savedSampleRates = make(map[string]int)
 		return
@@ -182,6 +204,17 @@ func (t *WindowedThroughput) updateMaps() {
 	// save newly calculated sample rates
 	t.lock.Lock()
 	defer t.lock.Unlock()
+	now := time.Now()
+	for k, rate := range t.savedSampleRates {
+		if _, active := newSavedSampleRates[k]; !active {
+			t.lastKnownRates[k] = lastKnownEntry{rate: rate, expiresAt: now.Add(t.RateRetentionDuration)}
+		}
+	}
+	for k, entry := range t.lastKnownRates {
+		if now.After(entry.expiresAt) {
+			delete(t.lastKnownRates, k)
+		}
+	}
 	t.updateCount++
 	t.savedSampleRates = newSavedSampleRates
 	t.numKeys = numKeys
@@ -214,7 +247,12 @@ func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
 	if rate, found := t.savedSampleRates[key]; found {
 		return rate
 	}
-	return 0
+	if entry, found := t.lastKnownRates[key]; found {
+		if time.Now().Before(entry.expiresAt) {
+			return entry.rate
+		}
+	}
+	return 1
 }
 
 // SaveState is not implemented

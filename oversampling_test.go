@@ -35,21 +35,21 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 	// runSeconds seconds. It samples metrics once per second and returns the
 	// per-second deltas.
 	runScenario := func(numWorkers int) []snapshot {
-		//	s := &WindowedThroughput{
-		//		GoalThroughputPerSec:      1000,
-		//		LookbackFrequencyDuration: 5 * time.Second,
-		//		UpdateFrequencyDuration:   1 * time.Second,
-		//	}
-
-		s := &EMAThroughput{
-			GoalThroughputPerSec: 1000,
-			AdjustmentInterval:   1 * time.Second,
-			InitialSampleRate:    1,
-			MaxKeys:              2000,
+		s := &WindowedThroughput{
+			GoalThroughputPerSec:      1000,
+			LookbackFrequencyDuration: 5 * time.Second,
+			UpdateFrequencyDuration:   1 * time.Second,
 		}
+
+		//	s := &EMAThroughput{
+		//		GoalThroughputPerSec: 1000,
+		//		AdjustmentInterval:   1 * time.Second,
+		//		InitialSampleRate:    1,
+		//		MaxKeys:              2000,
+		//	}
 		s.Start()
 		// only count events after the first updateMaps tick fires
-		warmupEnd := time.Now().Add(s.AdjustmentInterval + 50*time.Millisecond)
+		warmupEnd := time.Now().Add(s.UpdateFrequencyDuration + 50*time.Millisecond)
 
 		type result struct {
 			numTries int
