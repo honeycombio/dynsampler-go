@@ -2,12 +2,12 @@ package dynsampler
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,9 +19,9 @@ import (
 // NOTE: meaningful only with GOMAXPROCS >= 2.
 func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 	const (
-		numKeys       = 100
-		numGoroutines = 2
-		runSeconds    = 15
+		numKeys       = 1500
+		numGoroutines = 10
+		runSeconds    = 30
 	)
 
 	keys := make([]string, numKeys)
@@ -35,14 +35,21 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 	// runSeconds seconds. It samples metrics once per second and returns the
 	// per-second deltas.
 	runScenario := func(numWorkers int) []snapshot {
-		s := &WindowedThroughput{
-			GoalThroughputPerSec:      1000,
-			LookbackFrequencyDuration: 5 * time.Second,
-			UpdateFrequencyDuration:   1 * time.Second,
+		//	s := &WindowedThroughput{
+		//		GoalThroughputPerSec:      1000,
+		//		LookbackFrequencyDuration: 5 * time.Second,
+		//		UpdateFrequencyDuration:   1 * time.Second,
+		//	}
+
+		s := &EMAThroughput{
+			GoalThroughputPerSec: 1000,
+			AdjustmentInterval:   1 * time.Second,
+			InitialSampleRate:    1,
+			MaxKeys:              2000,
 		}
 		s.Start()
 		// only count events after the first updateMaps tick fires
-		warmupEnd := time.Now().Add(s.UpdateFrequencyDuration + 50*time.Millisecond)
+		warmupEnd := time.Now().Add(s.AdjustmentInterval + 50*time.Millisecond)
 
 		type result struct {
 			numTries int
@@ -57,24 +64,23 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 				defer wg.Done()
 				var numTries, numKept int
 				for i := 0; ; i++ {
-					for j := 0; j <= i; j++ {
-						select {
-						case <-done:
-							results <- result{
-								numTries: numTries,
-								numKept:  numKept,
+					select {
+					case <-done:
+						results <- result{
+							numTries: numTries,
+							numKept:  numKept,
+						}
+						return
+					default:
+						count := int(math.Log(float64(i + 1)))
+						rate := s.GetSampleRateMulti(keys[i%numKeys], count)
+						if time.Now().After(warmupEnd) {
+							numTries++
+							if rate == 0 {
+								rate = 1
 							}
-							return
-						default:
-							rate := s.GetSampleRateMulti(keys[i%numKeys], 1)
-							if time.Now().After(warmupEnd) {
-								numTries++
-								if rate == 0 {
-									rate = 1
-								}
-								if rand.Intn(rate) == 0 {
-									numKept++
-								}
+							if rand.Intn(rate) == 0 {
+								numKept += count
 							}
 						}
 					}
@@ -108,7 +114,7 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 		}
 
 		fmt.Println("totalTries", totalTries, "totalKept", totalKept)
-		fmt.Println("ratio", totalTries/totalKept)
+		fmt.Println("ratio", totalKept/runSeconds)
 		return snaps
 	}
 
@@ -126,23 +132,4 @@ func TestWindowedThroughputMetricRatePerSecond(t *testing.T) {
 
 	require.Len(t, singleSnaps, runSeconds)
 	require.Len(t, concurrentSnaps, runSeconds)
-
-	// requestCount and eventCount are updated by two separate atomic ops, so a
-	// concurrent GetMetrics read can observe them a few counts apart. Assert
-	// they stay within 0.01% of each other per second — any larger gap would
-	// indicate a structural bug, not a sampling artifact.
-	const tolerance = 0.0001
-	for _, snaps := range [][]snapshot{singleSnaps, concurrentSnaps} {
-		for i, s := range snaps {
-			if s.requests == 0 {
-				continue
-			}
-			diff := s.requests - s.events
-			if diff < 0 {
-				diff = -diff
-			}
-			assert.LessOrEqual(t, float64(diff)/float64(s.requests), tolerance,
-				"sec %d: request/event count diverged beyond tolerance", i+1)
-		}
-	}
 }

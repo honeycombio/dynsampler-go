@@ -60,6 +60,7 @@ type WindowedThroughput struct {
 	// metrics
 	requestCount    int64
 	eventCount      int64
+	updateCount     int64
 	numKeys         int
 	prefix          string
 	requestCountKey string
@@ -181,6 +182,7 @@ func (t *WindowedThroughput) updateMaps() {
 	// save newly calculated sample rates
 	t.lock.Lock()
 	defer t.lock.Unlock()
+	t.updateCount++
 	t.savedSampleRates = newSavedSampleRates
 	t.numKeys = numKeys
 }
@@ -249,9 +251,10 @@ func (t *WindowedThroughput) GetMetrics(prefix string) map[string]int64 {
 	}
 
 	mets := map[string]int64{
-		t.requestCountKey: t.requestCount,
-		t.eventCountKey:   t.eventCount,
-		t.keyspaceSizeKey: int64(t.numKeys),
+		t.requestCountKey:         t.requestCount,
+		t.eventCountKey:           t.eventCount,
+		t.keyspaceSizeKey:         int64(t.numKeys),
+		t.prefix + "update_count": t.updateCount,
 	}
 	return mets
 }
