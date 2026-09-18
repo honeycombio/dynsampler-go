@@ -1,7 +1,6 @@
 package dynsampler
 
 import (
-	"math"
 	"sync"
 	"time"
 )
@@ -168,16 +167,15 @@ func (t *WindowedThroughput) updateMaps() {
 	t.lock.Lock()
 	goalThroughputPerSec := t.GoalThroughputPerSec
 	t.lock.Unlock()
-	totalGoalThroughput := goalThroughputPerSec * t.LookbackFrequencyDuration.Seconds()
-	// split the total throughput equally across the number of keys.
-	throughputPerKey := float64(totalGoalThroughput) / float64(numKeys)
-	// for each key, calculate sample rate by dividing counted events by the
-	// desired number of events
-	newSavedSampleRates := make(map[string]int)
+	// Split the goal equally across the keys seen. Shared with
+	// WindowedThroughputCalculator via windowedSampleRates so the two cannot
+	// drift; the BlockList aggregates ints, so widen to float64 for the shared
+	// allocation.
+	agg := make(map[string]float64, numKeys)
 	for k, v := range aggregateCounts {
-		rate := int(math.Max(1, (float64(v) / float64(throughputPerKey))))
-		newSavedSampleRates[k] = rate
+		agg[k] = float64(v)
 	}
+	newSavedSampleRates := windowedSampleRates(agg, goalThroughputPerSec, t.LookbackFrequencyDuration)
 	// save newly calculated sample rates
 	t.lock.Lock()
 	defer t.lock.Unlock()

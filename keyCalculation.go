@@ -3,7 +3,27 @@ package dynsampler
 import (
 	"math"
 	"sort"
+	"time"
 )
+
+// windowedSampleRates splits the goal throughput equally across the keys
+// present in an aggregated window and returns the per-key sample rates. It is
+// the shared allocation used by both WindowedThroughput (timer-driven, backed
+// by a BlockList) and WindowedThroughputCalculator (caller-driven, backed by a
+// ring of buckets), so the two cannot drift. An empty window yields an empty
+// table.
+func windowedSampleRates(agg map[string]float64, goalThroughputPerSec float64, lookback time.Duration) map[string]int {
+	rates := make(map[string]int, len(agg))
+	if len(agg) == 0 {
+		return rates
+	}
+	totalGoal := goalThroughputPerSec * lookback.Seconds()
+	perKey := totalGoal / float64(len(agg))
+	for k, v := range agg {
+		rates[k] = int(math.Max(1, v/perKey))
+	}
+	return rates
+}
 
 // This is an extraction of common calculation logic for all the key-based samplers.
 func calculateSampleRates(goalRatio float64, buckets map[string]float64) map[string]int {
