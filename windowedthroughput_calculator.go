@@ -1,7 +1,6 @@
 package dynsampler
 
 import (
-	"math"
 	"time"
 )
 
@@ -72,14 +71,5 @@ func (c *WindowedThroughputCalculator) Rates() map[string]int {
 			agg[k] += v
 		}
 	}
-	rates := make(map[string]int, len(agg))
-	if len(agg) == 0 {
-		return rates
-	}
-	totalGoal := c.GoalThroughputPerSec * c.LookbackFrequency.Seconds()
-	perKey := totalGoal / float64(len(agg))
-	for k, v := range agg {
-		rates[k] = int(math.Max(1, v/perKey))
-	}
-	return rates
+	return windowedSampleRates(agg, c.GoalThroughputPerSec, c.LookbackFrequency)
 }
