@@ -14,7 +14,6 @@ import (
 // also pins the golden vector (a steady 40 events/interval settles at rate 4).
 func TestEMAThroughputCalculator_MatchesSampler(t *testing.T) {
 	e := &EMAThroughput{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
-	e.movingAverage = make(map[string]float64)
 	e.savedSampleRates = make(map[string]int)
 
 	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}

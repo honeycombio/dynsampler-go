@@ -27,7 +27,6 @@ func TestEMAThroughput_Characterization_ColdStart(t *testing.T) {
 
 func TestEMAThroughput_Characterization_AgesOutObservably(t *testing.T) {
 	e := &EMAThroughput{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2, InitialSampleRate: 10}
-	e.movingAverage = make(map[string]float64)
 	e.savedSampleRates = make(map[string]int)
 
 	for i := 0; i < 100; i++ {
@@ -45,7 +44,6 @@ func TestEMAThroughput_Characterization_AgesOutObservably(t *testing.T) {
 
 func TestEMAThroughput_Characterization_SaveLoadPreservesRates(t *testing.T) {
 	a := &EMAThroughput{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
-	a.movingAverage = make(map[string]float64)
 	a.savedSampleRates = make(map[string]int)
 	for i := 0; i < 50; i++ {
 		a.currentCounts = map[string]float64{"foo": 5000, "bar": 50}
