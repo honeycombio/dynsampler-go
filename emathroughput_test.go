@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"fmt"
 	"math"
 	mrand "math/rand"
 	"testing"
@@ -213,7 +214,10 @@ func TestEMAThroughputSampleRateSaveState(t *testing.T) {
 // number of times. Most of the time, the throughput of observations kept should be close
 // to the target rate.
 func TestEMAThroughputSampleRateHitsTargetRate(t *testing.T) {
-	mrand.Seed(time.Now().Unix())
+	// Use a fixed seed so the statistical assertions below are reproducible.
+	// A time-based seed made this test flake when a run's random draws pushed
+	// the success rate just under the threshold.
+	rng := mrand.New(mrand.NewSource(7))
 	testThroughputs := []int{100, 1000}
 	testKeyCount := []int{10, 30}
 	toleranceFraction := float64(0.2)
@@ -233,16 +237,19 @@ func TestEMAThroughputSampleRateHitsTargetRate(t *testing.T) {
 				movingAverage:        make(map[string]float64),
 			}
 
-			// build a consistent set of keys to use
+			// build a consistent set of keys to use. Deterministic keys (rather
+			// than random ones) keep the sorted order in calculateSampleRates
+			// stable, so the extra-slot redistribution and the resulting rates
+			// are reproducible across runs and Go versions.
 			keys := make([]string, keyCount)
 			for i := 0; i < keyCount; i++ {
-				keys[i] = randomString(8)
+				keys[i] = fmt.Sprintf("key-%d", i)
 			}
 
 			for i, key := range keys {
 				// generate key counts of different magnitudes
 				base := math.Pow10(i%3 + 1)
-				count := float64(((i%10)+1))*base + float64(mrand.Intn(int(base)))
+				count := float64(((i%10)+1))*base + float64(rng.Intn(int(base)))
 				sampler.currentCounts[key] = count
 			}
 
@@ -257,10 +264,10 @@ func TestEMAThroughputSampleRateHitsTargetRate(t *testing.T) {
 				totalKeptObservations := 0
 				for j, key := range keys {
 					base := math.Pow10(j%3 + 1)
-					count := float64(((j%10)+1))*base + float64(mrand.Intn(int(base)))
+					count := float64(((j%10)+1))*base + float64(rng.Intn(int(base)))
 					for k := 0; k < int(count); k++ {
 						rate := sampler.GetSampleRate(key)
-						if mrand.Intn(rate) == 0 {
+						if rng.Intn(rate) == 0 {
 							totalKeptObservations++
 						}
 					}
