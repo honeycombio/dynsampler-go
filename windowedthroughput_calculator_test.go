@@ -31,6 +31,18 @@ func TestWindowedThroughputCalculator_HappyPath(t *testing.T) {
 	assert.Equal(t, 9, c.Rates()[key], "[50,0,0,0,40]=90")
 }
 
+func TestWindowedThroughputCalculator_CopiesCounts(t *testing.T) {
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
+	counts := map[string]float64{"k": 20}
+	c.Update(counts)
+	// Mutating the caller's map after Update must not disturb the stored bucket.
+	counts["k"] = 999
+	counts["injected"] = 500
+	assert.Equal(t, 2, c.Rates()["k"], "stored bucket must be a copy, unaffected by later mutation")
+	_, injected := c.Rates()["injected"]
+	assert.False(t, injected, "a key added to the caller's map after Update must not appear")
+}
+
 func TestWindowedThroughputCalculator_EmptyWindow(t *testing.T) {
 	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 3 * time.Second}
 	assert.Empty(t, c.Rates(), "no traffic yet")

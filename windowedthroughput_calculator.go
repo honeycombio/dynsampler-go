@@ -51,11 +51,15 @@ func (c *WindowedThroughputCalculator) ensureInit() {
 }
 
 // Update installs one update-tick of counts, evicting the oldest tick once the
-// lookback window is full. The calculator retains the supplied map, so callers
-// should not mutate it afterwards.
+// lookback window is full. It copies the counts into its own bucket, so the
+// caller is free to reuse or mutate the map afterwards.
 func (c *WindowedThroughputCalculator) Update(counts map[string]float64) {
 	c.ensureInit()
-	c.buckets[c.pos] = counts
+	bucket := make(map[string]float64, len(counts))
+	for k, v := range counts {
+		bucket[k] = v
+	}
+	c.buckets[c.pos] = bucket
 	c.pos = (c.pos + 1) % len(c.buckets)
 }
 
