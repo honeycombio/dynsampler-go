@@ -48,35 +48,36 @@ func (c *EMAThroughputCalculator) ensureInit() {
 	}
 }
 
-// Update folds one interval of counts into the moving average, consuming the
-// map. An empty interval leaves the average untouched: traffic gaps must not
-// decay it (a burst-then-quiet key should not be treated as having dropped to
-// zero the moment traffic pauses).
+// Update folds one interval of counts into the moving average. The counts map
+// is only read, never retained or modified. An empty interval leaves the
+// average untouched: traffic gaps must not decay it (a burst-then-quiet key
+// should not be treated as having dropped to zero the moment traffic pauses).
 func (c *EMAThroughputCalculator) Update(counts map[string]float64) {
 	c.ensureInit()
 	if len(counts) == 0 {
 		return
 	}
-	keysToUpdate := make([]string, 0, len(c.movingAverage))
+	// Snapshot the currently tracked keys so the new-key loop below can tell
+	// them apart from keys already in the moving average, without deleting
+	// from the caller's counts map.
+	tracked := make(map[string]struct{}, len(c.movingAverage))
 	for key := range c.movingAverage {
-		keysToUpdate = append(keysToUpdate, key)
+		tracked[key] = struct{}{}
 	}
-	for _, key := range keysToUpdate {
-		var newAvg float64
-		if val, found := counts[key]; found {
-			newAvg = adjustAverage(c.movingAverage[key], val, c.Weight)
-		} else {
-			newAvg = adjustAverage(c.movingAverage[key], 0, c.Weight)
-		}
+	// counts[key] is 0 for a tracked key absent this interval, which decays it.
+	for key := range tracked {
+		newAvg := adjustAverage(c.movingAverage[key], counts[key], c.Weight)
 		if newAvg < c.AgeOutValue {
 			delete(c.movingAverage, key)
 		} else {
 			c.movingAverage[key] = newAvg
 		}
-		delete(counts, key)
 	}
-	for key := range counts {
-		newAvg := adjustAverage(0, counts[key], c.Weight)
+	for key, val := range counts {
+		if _, ok := tracked[key]; ok {
+			continue
+		}
+		newAvg := adjustAverage(0, val, c.Weight)
 		if newAvg >= c.AgeOutValue {
 			c.movingAverage[key] = newAvg
 		}

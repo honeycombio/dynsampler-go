@@ -44,6 +44,18 @@ func TestEMAThroughputCalculator_EmptyIntervalDoesNotDecay(t *testing.T) {
 	assert.Equal(t, before, c.movingAverageState()["foo"], "an empty interval must not decay the average")
 }
 
+func TestEMAThroughputCalculator_DoesNotModifyCounts(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	// Seed a tracked key so the update touches both the existing-key and
+	// new-key paths.
+	c.Update(map[string]float64{"tracked": 100})
+
+	counts := map[string]float64{"tracked": 50, "fresh": 20}
+	c.Update(counts)
+
+	assert.Equal(t, map[string]float64{"tracked": 50, "fresh": 20}, counts, "Update must not modify the caller's counts map")
+}
+
 func TestEMAThroughputCalculator_AgesOut(t *testing.T) {
 	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
 	for i := 0; i < 100; i++ {
