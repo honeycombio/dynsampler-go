@@ -305,10 +305,10 @@ func (e *EMAThroughput) SaveState() ([]byte, error) {
 	if e.savedSampleRates == nil {
 		return nil, errors.New("saved sample rate map is nil")
 	}
-	if e.calc == nil || e.calc.movingAverage == nil {
+	if e.calc == nil {
 		return nil, errors.New("moving average map is nil")
 	}
-	s := &emaThroughputState{SavedSampleRates: e.savedSampleRates, MovingAverage: e.calc.movingAverage}
+	s := &emaThroughputState{SavedSampleRates: e.savedSampleRates, MovingAverage: e.calc.movingAverageState()}
 	return json.Marshal(s)
 }
 

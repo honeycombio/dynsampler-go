@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	mrand "math/rand"
@@ -206,6 +207,32 @@ func TestEMAThroughputSampleRateSaveState(t *testing.T) {
 	defer esr2.lock.Unlock()
 	assert.Equal(t, float64(500.1234), esr2.calc.movingAverageState()["foo"])
 	assert.Equal(t, float64(9999.99), esr2.calc.movingAverageState()["bar"])
+}
+
+func TestEMAThroughputSaveStateNoTraffic(t *testing.T) {
+	// A never-started sampler has no calc yet, so SaveState should still error.
+	notStarted := &EMAThroughput{}
+	_, err := notStarted.SaveState()
+	assert.Error(t, err)
+
+	// A started sampler that hasn't seen any traffic should save empty state,
+	// not error, matching pre-regression behaviour.
+	e := &EMAThroughput{
+		// Long enough that no adjustment tick fires during the test.
+		AdjustmentInterval: 1 * time.Hour,
+	}
+	err = e.Start()
+	assert.Nil(t, err)
+	defer e.Stop()
+
+	state, err := e.SaveState()
+	assert.Nil(t, err)
+
+	var s emaThroughputState
+	err = json.Unmarshal(state, &s)
+	assert.Nil(t, err)
+	assert.Equal(t, map[string]int{}, s.SavedSampleRates)
+	assert.Equal(t, map[string]float64{}, s.MovingAverage)
 }
 
 // This is a long test that generates a lot of random data and run it through the sampler
