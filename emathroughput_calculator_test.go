@@ -56,6 +56,39 @@ func TestEMAThroughputCalculator_DoesNotModifyCounts(t *testing.T) {
 	assert.Equal(t, map[string]float64{"tracked": 50, "fresh": 20}, counts, "Update must not modify the caller's counts map")
 }
 
+func TestEMAThroughputCalculator_SaveLoadRoundTrip(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
+	for i := 0; i < 5; i++ {
+		c.Update(map[string]float64{"foo": 40, "bar": 10})
+	}
+
+	state, err := c.SaveState()
+	assert.NoError(t, err)
+
+	loaded := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
+	assert.NoError(t, loaded.LoadState(state))
+	assert.Equal(t, c.Rates(), loaded.Rates(), "rates must match immediately after a save/load handoff")
+
+	// Feed both identical further intervals: a fleet handoff must stay
+	// deterministic, not just match at the moment of the handoff.
+	for i := 0; i < 5; i++ {
+		next := map[string]float64{"foo": 40, "bar": 10, fmt.Sprintf("new-%d", i): 5}
+		c.Update(next)
+		loaded.Update(next)
+		assert.Equal(t, c.Rates(), loaded.Rates(), "rates must stay identical after further identical updates")
+	}
+}
+
+func TestEMAThroughputCalculator_LoadRejectsGarbage(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	c.Update(map[string]float64{"foo": 100})
+	before := c.Rates()
+
+	err := c.LoadState([]byte("not json"))
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a failed load must leave prior state untouched")
+}
+
 func TestEMAThroughputCalculator_AgesOut(t *testing.T) {
 	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
 	for i := 0; i < 100; i++ {

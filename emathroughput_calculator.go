@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"encoding/json"
 	"math"
 	"time"
 )
@@ -118,3 +119,35 @@ func (c *EMAThroughputCalculator) loadMovingAverage(avg map[string]float64) {
 		c.movingAverage = avg
 	}
 }
+
+// emaThroughputCalculatorState is the JSON wire format for
+// EMAThroughputCalculator.SaveState/LoadState.
+type emaThroughputCalculatorState struct {
+	MovingAverage map[string]float64 `json:"moving_average"`
+}
+
+// SaveState serializes the calculator's moving average to a byte blob. Not
+// safe for concurrent use with Update/Rates; callers serialize access.
+func (c *EMAThroughputCalculator) SaveState() ([]byte, error) {
+	c.ensureInit()
+	return json.Marshal(emaThroughputCalculatorState{MovingAverage: c.movingAverage})
+}
+
+// LoadState restores the calculator's moving average from a blob produced by
+// SaveState, replacing the current state wholesale. On error the calculator's
+// existing state is left untouched. Not safe for concurrent use with
+// Update/Rates; callers serialize access.
+func (c *EMAThroughputCalculator) LoadState(state []byte) error {
+	var s emaThroughputCalculatorState
+	if err := json.Unmarshal(state, &s); err != nil {
+		return err
+	}
+	c.ensureInit()
+	if s.MovingAverage == nil {
+		s.MovingAverage = make(map[string]float64)
+	}
+	c.movingAverage = s.MovingAverage
+	return nil
+}
+
+var _ StateProvider = (*EMAThroughputCalculator)(nil)

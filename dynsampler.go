@@ -43,6 +43,15 @@ type Sampler interface {
 	GetMetrics(prefix string) map[string]int64
 }
 
+// StateProvider is the optional persistence capability: a component that can
+// serialize its internal state to an opaque byte blob and restore from one
+// (process restarts, seeding a new instance). LoadState replaces state
+// wholesale. Blobs are only portable between values of the same type.
+type StateProvider interface {
+	SaveState() ([]byte, error)
+	LoadState([]byte) error
+}
+
 // metrics suffixes for the sampler
 const (
 	requestCountSuffix  = "request_count"

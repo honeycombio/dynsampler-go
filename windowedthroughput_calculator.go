@@ -1,6 +1,7 @@
 package dynsampler
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -59,6 +60,12 @@ func (c *WindowedThroughputCalculator) Update(counts map[string]float64) {
 	for k, v := range counts {
 		bucket[k] = v
 	}
+	c.push(bucket)
+}
+
+// push installs a bucket at the current ring position and advances it. The
+// caller owns bucket; push does not copy it.
+func (c *WindowedThroughputCalculator) push(bucket map[string]float64) {
 	c.buckets[c.pos] = bucket
 	c.pos = (c.pos + 1) % len(c.buckets)
 }
@@ -77,3 +84,54 @@ func (c *WindowedThroughputCalculator) Rates() map[string]int {
 	}
 	return windowedSampleRates(agg, c.GoalThroughputPerSec, c.LookbackFrequency)
 }
+
+// windowedThroughputCalculatorState is the JSON wire format for
+// WindowedThroughputCalculator.SaveState/LoadState. Buckets are ordered
+// oldest-to-newest, independent of the ring's internal write position.
+type windowedThroughputCalculatorState struct {
+	Buckets []map[string]float64 `json:"buckets"`
+}
+
+// SaveState serializes the calculator's window of ticks, oldest-to-newest, to
+// a byte blob. Not safe for concurrent use with Update/Rates; callers
+// serialize access.
+func (c *WindowedThroughputCalculator) SaveState() ([]byte, error) {
+	c.ensureInit()
+	buckets := make([]map[string]float64, 0, len(c.buckets))
+	for i := 0; i < len(c.buckets); i++ {
+		b := c.buckets[(c.pos+i)%len(c.buckets)]
+		if b == nil {
+			continue
+		}
+		buckets = append(buckets, b)
+	}
+	return json.Marshal(windowedThroughputCalculatorState{Buckets: buckets})
+}
+
+// LoadState restores the calculator's window from a blob produced by
+// SaveState, replacing the current state wholesale. Saved buckets replay
+// oldest-first through the ring; if there are more saved buckets than the
+// configured window length, the ring's natural overwrite keeps only the
+// newest ones. On error the calculator's existing state is left untouched.
+// Not safe for concurrent use with Update/Rates; callers serialize access.
+//
+// Key bounding (e.g. a cap on distinct keys per bucket) is the caller's
+// concern; the calculator deliberately imposes no cap here.
+func (c *WindowedThroughputCalculator) LoadState(state []byte) error {
+	var s windowedThroughputCalculatorState
+	if err := json.Unmarshal(state, &s); err != nil {
+		return err
+	}
+	c.ensureInit()
+	c.buckets = make([]map[string]float64, len(c.buckets))
+	c.pos = 0
+	for _, b := range s.Buckets {
+		if b == nil {
+			b = make(map[string]float64)
+		}
+		c.push(b)
+	}
+	return nil
+}
+
+var _ StateProvider = (*WindowedThroughputCalculator)(nil)
