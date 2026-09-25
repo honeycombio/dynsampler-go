@@ -89,6 +89,19 @@ func TestEMAThroughputCalculator_LoadRejectsGarbage(t *testing.T) {
 	assert.Equal(t, before, c.Rates(), "a failed load must leave prior state untouched")
 }
 
+func TestEMAThroughputCalculator_IgnoresPoisonCounts(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5, AgeOutValue: 0.5}
+	c.Update(map[string]float64{"poison": math.Inf(1), "ok": 100})
+
+	_, found := c.movingAverageState()["poison"]
+	assert.False(t, found, "an infinite count must never enter the moving average")
+	_, found = c.Rates()["poison"]
+	assert.False(t, found, "an infinite count must never produce a rate")
+
+	_, found = c.movingAverageState()["ok"]
+	assert.True(t, found, "a valid count alongside a poison one must still be tracked")
+}
+
 func TestEMAThroughputCalculator_AgesOut(t *testing.T) {
 	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
 	for i := 0; i < 100; i++ {
