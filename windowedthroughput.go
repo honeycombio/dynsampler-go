@@ -49,6 +49,11 @@ type WindowedThroughput struct {
 	// If MaxKeys is set to 0 (default), there is no upper bound on the number of distinct keys.
 	MaxKeys int
 
+	// OverflowSampleRate, if greater than 0, is the sample rate returned for a key
+	// that is rejected because MaxKeys has been reached, instead of the default
+	// keep-everything rate of 0. Defaults to 0, which preserves that default behavior.
+	OverflowSampleRate int
+
 	savedSampleRates map[string]int
 	done             chan struct{}
 	countList        BlockList
@@ -204,8 +209,11 @@ func (t *WindowedThroughput) GetSampleRateMulti(key string, count int) int {
 	current := t.indexGenerator.GetCurrentIndex()
 	err := t.countList.IncrementKey(key, current, count)
 
-	// We've reached MaxKeys, return 0.
+	// We've reached MaxKeys, return the overflow rate if configured, else 0.
 	if err != nil {
+		if t.OverflowSampleRate > 0 {
+			return t.OverflowSampleRate
+		}
 		return 0
 	}
 
