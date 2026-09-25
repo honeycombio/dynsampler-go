@@ -52,6 +52,10 @@ func (c *EMAThroughputCalculator) ensureInit() {
 // is only read, never retained or modified. An empty interval leaves the
 // average untouched: traffic gaps must not decay it (a burst-then-quiet key
 // should not be treated as having dropped to zero the moment traffic pauses).
+// Counts must be finite and positive; a NaN or infinite count for a tracked
+// key is treated as 0 (so the key decays normally), and a NaN, infinite, or
+// non-positive count for a new key is ignored, since an unbounded value can
+// never age back out of the average.
 func (c *EMAThroughputCalculator) Update(counts map[string]float64) {
 	c.ensureInit()
 	if len(counts) == 0 {
@@ -66,7 +70,11 @@ func (c *EMAThroughputCalculator) Update(counts map[string]float64) {
 	}
 	// counts[key] is 0 for a tracked key absent this interval, which decays it.
 	for key := range tracked {
-		newAvg := adjustAverage(c.movingAverage[key], counts[key], c.Weight)
+		val := counts[key]
+		if math.IsNaN(val) || math.IsInf(val, 0) || val < 0 {
+			val = 0
+		}
+		newAvg := adjustAverage(c.movingAverage[key], val, c.Weight)
 		if newAvg < c.AgeOutValue {
 			delete(c.movingAverage, key)
 		} else {
@@ -75,6 +83,9 @@ func (c *EMAThroughputCalculator) Update(counts map[string]float64) {
 	}
 	for key, val := range counts {
 		if _, ok := tracked[key]; ok {
+			continue
+		}
+		if val <= 0 || math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
 		newAvg := adjustAverage(0, val, c.Weight)
