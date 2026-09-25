@@ -2,6 +2,7 @@ package dynsampler
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"time"
 )
@@ -131,34 +132,68 @@ func (c *EMAThroughputCalculator) loadMovingAverage(avg map[string]float64) {
 	}
 }
 
+// emaThroughputCalculatorKind identifies an EMAThroughputCalculator blob, so
+// a blob from a different type (or no kind at all, as with a legacy
+// EMAThroughput sampler blob, or `null`) is rejected by LoadState rather than
+// silently half-loading.
+const emaThroughputCalculatorKind = "ema_throughput_calculator"
+
+// emaThroughputCalculatorVersion is the current wire format version for
+// EMAThroughputCalculator blobs.
+const emaThroughputCalculatorVersion = 1
+
 // emaThroughputCalculatorState is the JSON wire format for
-// EMAThroughputCalculator.SaveState/LoadState.
+// EMAThroughputCalculator.SaveState/LoadState. Kind and Version guard against
+// loading a blob from a different type or format; AdjustmentInterval guards
+// against loading into a calculator configured with a different timing,
+// which would reprice the moving average against the wrong interval.
 type emaThroughputCalculatorState struct {
-	MovingAverage map[string]float64 `json:"moving_average"`
+	Kind               string             `json:"kind"`
+	Version            int                `json:"version"`
+	AdjustmentInterval time.Duration      `json:"adjustment_interval"`
+	MovingAverage      map[string]float64 `json:"moving_average"`
 }
 
-// SaveState serializes the calculator's moving average to a byte blob. Not
-// safe for concurrent use with Update/Rates; callers serialize access.
+// SaveState serializes the calculator's moving average, along with its kind,
+// version, and timing config, to a byte blob. Not safe for concurrent use
+// with Update/Rates; callers serialize access.
 func (c *EMAThroughputCalculator) SaveState() ([]byte, error) {
 	c.ensureInit()
-	return json.Marshal(emaThroughputCalculatorState{MovingAverage: c.movingAverage})
+	return json.Marshal(emaThroughputCalculatorState{
+		Kind:               emaThroughputCalculatorKind,
+		Version:            emaThroughputCalculatorVersion,
+		AdjustmentInterval: c.AdjustmentInterval,
+		MovingAverage:      c.movingAverage,
+	})
 }
 
 // LoadState restores the calculator's moving average from a blob produced by
-// SaveState, replacing the current state wholesale. On error the calculator's
-// existing state is left untouched. Not safe for concurrent use with
-// Update/Rates; callers serialize access.
+// SaveState, replacing the current state wholesale. It rejects a blob that
+// isn't an EMAThroughputCalculator blob (wrong kind, including `null` or a
+// legacy EMAThroughput sampler blob, which decodes to an empty kind), a
+// different wire version, or one saved under a different AdjustmentInterval
+// than this calculator is configured with (the average would be repriced
+// against the wrong interval). On error the calculator's existing state is
+// left untouched. Not safe for concurrent use with Update/Rates; callers
+// serialize access.
 func (c *EMAThroughputCalculator) LoadState(state []byte) error {
 	var s emaThroughputCalculatorState
 	if err := json.Unmarshal(state, &s); err != nil {
 		return err
 	}
+	if s.Kind != emaThroughputCalculatorKind {
+		return fmt.Errorf("dynsampler: cannot load state: expected kind %q, got %q", emaThroughputCalculatorKind, s.Kind)
+	}
+	if s.Version != emaThroughputCalculatorVersion {
+		return fmt.Errorf("dynsampler: cannot load state: expected version %d, got %d", emaThroughputCalculatorVersion, s.Version)
+	}
 	c.ensureInit()
+	if s.AdjustmentInterval != c.AdjustmentInterval {
+		return fmt.Errorf("dynsampler: cannot load state: blob AdjustmentInterval %v does not match calculator's %v", s.AdjustmentInterval, c.AdjustmentInterval)
+	}
 	if s.MovingAverage == nil {
 		s.MovingAverage = make(map[string]float64)
 	}
 	c.movingAverage = s.MovingAverage
 	return nil
 }
-
-var _ StateProvider = (*EMAThroughputCalculator)(nil)

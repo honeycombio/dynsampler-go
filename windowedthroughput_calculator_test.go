@@ -88,31 +88,24 @@ func TestWindowedThroughputCalculator_SaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
-func TestWindowedThroughputCalculator_LoadIntoShorterWindow(t *testing.T) {
+// A blob saved under one LookbackFrequency must not silently reprice a
+// calculator configured with a different one; the caller should cold-start
+// instead. State on the target calculator must be untouched by the error.
+func TestWindowedThroughputCalculator_LoadRejectsTimingMismatch(t *testing.T) {
 	source := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
-	ticks := []map[string]float64{
-		{"t0": 5},
-		{"t1": 10},
-		{"t2": 15},
-		{"t3": 20},
-		{"t4": 25},
+	for i := 0; i < 5; i++ {
+		source.Update(map[string]float64{"t": float64(10 + i)})
 	}
-	for _, tick := range ticks {
-		source.Update(tick)
-	}
-
 	state, err := source.SaveState()
 	assert.NoError(t, err)
 
 	shorter := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 3 * time.Second}
-	assert.NoError(t, shorter.LoadState(state))
+	shorter.Update(map[string]float64{"existing": 7})
+	before := shorter.Rates()
 
-	want := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 3 * time.Second}
-	for _, tick := range ticks[len(ticks)-3:] {
-		want.Update(tick)
-	}
-
-	assert.Equal(t, want.Rates(), shorter.Rates(), "loading into a shorter ring must keep only the newest ticks")
+	err = shorter.LoadState(state)
+	assert.Error(t, err)
+	assert.Equal(t, before, shorter.Rates(), "a rejected load must leave prior state untouched")
 }
 
 func TestWindowedThroughputCalculator_LoadRejectsGarbage(t *testing.T) {
@@ -123,6 +116,45 @@ func TestWindowedThroughputCalculator_LoadRejectsGarbage(t *testing.T) {
 	err := c.LoadState([]byte("not json"))
 	assert.Error(t, err)
 	assert.Equal(t, before, c.Rates(), "a failed load must leave prior state untouched")
+}
+
+func TestWindowedThroughputCalculator_LoadRejectsNull(t *testing.T) {
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
+	c.Update(map[string]float64{"a": 20})
+	before := c.Rates()
+
+	err := c.LoadState([]byte("null"))
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected null load must leave prior state untouched")
+}
+
+func TestWindowedThroughputCalculator_LoadRejectsVersionMismatch(t *testing.T) {
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
+	c.Update(map[string]float64{"a": 20})
+	before := c.Rates()
+
+	blob := fmt.Sprintf(`{"kind":%q,"version":2,"update_frequency":%d,"lookback_frequency":%d,"buckets":[]}`,
+		windowedThroughputCalculatorKind, time.Second, 5*time.Second)
+	err := c.LoadState([]byte(blob))
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected version mismatch must leave prior state untouched")
+}
+
+// A blob from the EMA calculator must not be accepted by the windowed
+// calculator's LoadState; the kind discriminator must catch it.
+func TestWindowedThroughputCalculator_LoadRejectsCrossType(t *testing.T) {
+	ema := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	ema.Update(map[string]float64{"foo": 100})
+	emaState, err := ema.SaveState()
+	assert.NoError(t, err)
+
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
+	c.Update(map[string]float64{"a": 20})
+	before := c.Rates()
+
+	err = c.LoadState(emaState)
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected cross-type load must leave prior state untouched")
 }
 
 func TestWindowedThroughputCalculator_SaveFreshRoundTripsEmpty(t *testing.T) {

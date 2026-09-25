@@ -2,6 +2,7 @@ package dynsampler
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"time"
 )
@@ -102,16 +103,36 @@ func (c *WindowedThroughputCalculator) Rates() map[string]int {
 	return windowedSampleRates(agg, c.GoalThroughputPerSec, c.lookback)
 }
 
+// windowedThroughputCalculatorKind identifies a WindowedThroughputCalculator
+// blob, so a blob from a different type (or no kind at all, as with `null`)
+// is rejected by LoadState rather than silently wiping state.
+const windowedThroughputCalculatorKind = "windowed_throughput_calculator"
+
+// windowedThroughputCalculatorVersion is the current wire format version for
+// WindowedThroughputCalculator blobs.
+const windowedThroughputCalculatorVersion = 1
+
 // windowedThroughputCalculatorState is the JSON wire format for
 // WindowedThroughputCalculator.SaveState/LoadState. Buckets are ordered
-// oldest-to-newest, independent of the ring's internal write position.
+// oldest-to-newest, independent of the ring's internal write position. Kind
+// and Version guard against loading a blob from a different type or format;
+// UpdateFrequency and LookbackFrequency guard against loading into a
+// calculator configured with a different timing, which would reprice the
+// window against the wrong span.
 type windowedThroughputCalculatorState struct {
-	Buckets []map[string]float64 `json:"buckets"`
+	Kind              string               `json:"kind"`
+	Version           int                  `json:"version"`
+	UpdateFrequency   time.Duration        `json:"update_frequency"`
+	LookbackFrequency time.Duration        `json:"lookback_frequency"`
+	Buckets           []map[string]float64 `json:"buckets"`
 }
 
-// SaveState serializes the calculator's window of ticks, oldest-to-newest, to
-// a byte blob. Not safe for concurrent use with Update/Rates; callers
-// serialize access.
+// SaveState serializes the calculator's window of ticks, oldest-to-newest,
+// along with its kind, version, and timing config, to a byte blob. Not safe
+// for concurrent use with Update/Rates; callers serialize access.
+//
+// The blob is O(window length x distinct keys per tick); it's meant for
+// periodic checkpointing, not per-decision use.
 func (c *WindowedThroughputCalculator) SaveState() ([]byte, error) {
 	c.ensureInit()
 	buckets := make([]map[string]float64, 0, len(c.buckets))
@@ -122,15 +143,26 @@ func (c *WindowedThroughputCalculator) SaveState() ([]byte, error) {
 		}
 		buckets = append(buckets, b)
 	}
-	return json.Marshal(windowedThroughputCalculatorState{Buckets: buckets})
+	return json.Marshal(windowedThroughputCalculatorState{
+		Kind:              windowedThroughputCalculatorKind,
+		Version:           windowedThroughputCalculatorVersion,
+		UpdateFrequency:   c.UpdateFrequency,
+		LookbackFrequency: c.lookback,
+		Buckets:           buckets,
+	})
 }
 
 // LoadState restores the calculator's window from a blob produced by
-// SaveState, replacing the current state wholesale. Saved buckets replay
-// oldest-first through the ring; if there are more saved buckets than the
-// configured window length, the ring's natural overwrite keeps only the
-// newest ones. On error the calculator's existing state is left untouched.
-// Not safe for concurrent use with Update/Rates; callers serialize access.
+// SaveState, replacing the current state wholesale. It rejects a blob that
+// isn't a WindowedThroughputCalculator blob (wrong kind, including `null`),
+// a different wire version, one saved under a different UpdateFrequency or
+// LookbackFrequency than this calculator is effectively configured with (the
+// window would be repriced against the wrong span), or one whose bucket
+// count exceeds this calculator's ring length (which a blob with matching
+// timing cannot legitimately produce, so this catches a corrupt or tampered
+// blob). Saved buckets replay oldest-first through the ring. On error the
+// calculator's existing state is left untouched. Not safe for concurrent use
+// with Update/Rates; callers serialize access.
 //
 // Key bounding (e.g. a cap on distinct keys per bucket) is the caller's
 // concern; the calculator deliberately imposes no cap here.
@@ -139,7 +171,22 @@ func (c *WindowedThroughputCalculator) LoadState(state []byte) error {
 	if err := json.Unmarshal(state, &s); err != nil {
 		return err
 	}
+	if s.Kind != windowedThroughputCalculatorKind {
+		return fmt.Errorf("dynsampler: cannot load state: expected kind %q, got %q", windowedThroughputCalculatorKind, s.Kind)
+	}
+	if s.Version != windowedThroughputCalculatorVersion {
+		return fmt.Errorf("dynsampler: cannot load state: expected version %d, got %d", windowedThroughputCalculatorVersion, s.Version)
+	}
 	c.ensureInit()
+	if s.UpdateFrequency != c.UpdateFrequency {
+		return fmt.Errorf("dynsampler: cannot load state: blob UpdateFrequency %v does not match calculator's %v", s.UpdateFrequency, c.UpdateFrequency)
+	}
+	if s.LookbackFrequency != c.lookback {
+		return fmt.Errorf("dynsampler: cannot load state: blob LookbackFrequency %v does not match calculator's %v", s.LookbackFrequency, c.lookback)
+	}
+	if len(s.Buckets) > len(c.buckets) {
+		return fmt.Errorf("dynsampler: cannot load state: blob has %d buckets, more than this calculator's ring length %d", len(s.Buckets), len(c.buckets))
+	}
 	c.buckets = make([]map[string]float64, len(c.buckets))
 	c.pos = 0
 	for _, b := range s.Buckets {
@@ -150,5 +197,3 @@ func (c *WindowedThroughputCalculator) LoadState(state []byte) error {
 	}
 	return nil
 }
-
-var _ StateProvider = (*WindowedThroughputCalculator)(nil)

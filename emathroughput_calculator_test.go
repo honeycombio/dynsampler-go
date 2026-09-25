@@ -89,6 +89,83 @@ func TestEMAThroughputCalculator_LoadRejectsGarbage(t *testing.T) {
 	assert.Equal(t, before, c.Rates(), "a failed load must leave prior state untouched")
 }
 
+func TestEMAThroughputCalculator_LoadRejectsNull(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	c.Update(map[string]float64{"foo": 100})
+	before := c.Rates()
+
+	err := c.LoadState([]byte("null"))
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected null load must leave prior state untouched")
+}
+
+func TestEMAThroughputCalculator_LoadRejectsVersionMismatch(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	c.Update(map[string]float64{"foo": 100})
+	before := c.Rates()
+
+	blob := fmt.Sprintf(`{"kind":%q,"version":2,"adjustment_interval":%d,"moving_average":{}}`,
+		emaThroughputCalculatorKind, time.Second)
+	err := c.LoadState([]byte(blob))
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected version mismatch must leave prior state untouched")
+}
+
+func TestEMAThroughputCalculator_LoadRejectsTimingMismatch(t *testing.T) {
+	source := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	source.Update(map[string]float64{"foo": 100})
+	state, err := source.SaveState()
+	assert.NoError(t, err)
+
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: 5 * time.Second, Weight: 0.5}
+	c.Update(map[string]float64{"bar": 50})
+	before := c.Rates()
+
+	err = c.LoadState(state)
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected timing mismatch must leave prior state untouched")
+}
+
+// A blob from the windowed calculator must not be accepted by the EMA
+// calculator's LoadState; the kind discriminator must catch it.
+func TestEMAThroughputCalculator_LoadRejectsCrossType(t *testing.T) {
+	w := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
+	w.Update(map[string]float64{"a": 20})
+	wState, err := w.SaveState()
+	assert.NoError(t, err)
+
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	c.Update(map[string]float64{"foo": 100})
+	before := c.Rates()
+
+	err = c.LoadState(wState)
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected cross-type load must leave prior state untouched")
+}
+
+// A legacy EMAThroughput SAMPLER blob (saved_sample_rates + moving_average,
+// no kind/version) must not half-load into the calculator via the matching
+// moving_average field name.
+func TestEMAThroughputCalculator_LoadRejectsSamplerBlob(t *testing.T) {
+	sampler := &EMAThroughput{AdjustmentInterval: time.Hour}
+	assert.NoError(t, sampler.Start())
+	defer sampler.Stop()
+	sampler.lock.Lock()
+	sampler.savedSampleRates = map[string]int{"foo": 2}
+	sampler.calc.loadMovingAverage(map[string]float64{"foo": 100})
+	sampler.lock.Unlock()
+	samplerState, err := sampler.SaveState()
+	assert.NoError(t, err)
+
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5}
+	c.Update(map[string]float64{"foo": 100})
+	before := c.Rates()
+
+	err = c.LoadState(samplerState)
+	assert.Error(t, err)
+	assert.Equal(t, before, c.Rates(), "a rejected sampler blob load must leave prior state untouched")
+}
+
 func TestEMAThroughputCalculator_IgnoresPoisonCounts(t *testing.T) {
 	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5, AgeOutValue: 0.5}
 	c.Update(map[string]float64{"poison": math.Inf(1), "ok": 100})

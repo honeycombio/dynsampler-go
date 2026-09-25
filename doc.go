@@ -30,5 +30,16 @@ Some implementations implement `SaveState` and `LoadState` - enabling you to ser
 and load it back. This is useful, for example, if you want to avoid losing calculated sample rates between process
 restarts.
 
+Caller-driven calculators
+
+`EMAThroughputCalculator` and `WindowedThroughputCalculator` are timer-free computation cores: instead of owning a
+background timer, a caller drives them directly with `Update` (one interval or tick of counts) and reads `Rates` for
+the current per-key sample rates. This lets a caller merge counts across a fleet of processes and compute identical
+rates everywhere, or drive the computation on its own schedule. Each also has `SaveState`/`LoadState` for
+checkpointing between restarts; a saved blob is bound to its calculator type and effective timing config
+(`AdjustmentInterval` for the EMA calculator, `UpdateFrequency`/`LookbackFrequency` for the windowed one) - loading a
+blob into a calculator of a different type or a different timing configuration is rejected rather than silently
+repricing the wrong window.
+
 */
 package dynsampler

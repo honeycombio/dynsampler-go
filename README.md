@@ -26,3 +26,13 @@ Depending on the shape of your traffic, one may serve better than another, or yo
 * The best choice for a system with a large key space and a large disparity between the highest volume and lowest volume keys is `AvgSampleRateWithMin` - it will increase the sample rate of higher volume traffic proportionally to the logarithm of the specific key's volume. If total traffic falls below a configured minimum, it stops sampling to avoid any sampling when the traffic is too low to warrant it.
 * `EMASampleRate` works like `AvgSampleRate`, but calculates sample rates based on a moving average (Exponential Moving Average) of many measurement intervals rather than a single isolated interval. In addition, it can detect large bursts in traffic and will trigger a recalculation of sample rates before the regular interval.
 * If you want the benefit of a key-based sampler that also has limits on throughput, use `EMAThroughput`. It will adjust sample rates across a key space to achieve a given throughput while still ensuring that all keys are represented.
+
+## Caller-driven calculators
+
+`EMAThroughputCalculator` and `WindowedThroughputCalculator` are the timer-free computation cores behind `EMAThroughput` and `WindowedThroughput`. Instead of a background timer, a caller drives them directly with `Update` and reads `Rates` for the current per-key sample rates - useful for merging counts across a fleet of processes so every instance derives identical rates. Both also support `SaveState`/`LoadState` for checkpointing, bound to the calculator's type and timing configuration.
+
+```go
+c := &dynsampler.EMAThroughputCalculator{GoalThroughputPerSec: 100}
+c.Update(map[string]float64{"my_key": 50})
+rates := c.Rates() // map[string]int, e.g. {"my_key": 1}
+```
