@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -28,6 +29,11 @@ type EMAThroughputCalculator struct {
 	// AdjustmentInterval is the wall-clock span each Update represents; it
 	// scales the goal into a per-interval budget. Default 15s.
 	AdjustmentInterval time.Duration
+	// MaxKeys caps the number of distinct keys tracked at once. 0 (the
+	// default) is unbounded. When full, new keys are admitted in sorted key
+	// order as age-out frees slots; keys over the cap are absent from Rates
+	// and the caller decides their rate.
+	MaxKeys int
 
 	movingAverage map[string]float64
 }
@@ -83,6 +89,25 @@ func (c *EMAThroughputCalculator) Update(counts map[string]float64) {
 			c.movingAverage[key] = newAvg
 		}
 	}
+	if c.MaxKeys == 0 {
+		for key, val := range counts {
+			if _, ok := tracked[key]; ok {
+				continue
+			}
+			if val <= 0 || math.IsNaN(val) || math.IsInf(val, 0) {
+				continue
+			}
+			newAvg := adjustAverage(0, val, c.Weight)
+			if newAvg >= c.AgeOutValue {
+				c.movingAverage[key] = newAvg
+			}
+		}
+		return
+	}
+	// MaxKeys > 0: admit new keys in sorted order so two calculators fed
+	// identical counts admit the identical subset on overflow, regardless of
+	// map iteration order.
+	candidates := make([]string, 0, len(counts))
 	for key, val := range counts {
 		if _, ok := tracked[key]; ok {
 			continue
@@ -90,7 +115,14 @@ func (c *EMAThroughputCalculator) Update(counts map[string]float64) {
 		if val <= 0 || math.IsNaN(val) || math.IsInf(val, 0) {
 			continue
 		}
-		newAvg := adjustAverage(0, val, c.Weight)
+		candidates = append(candidates, key)
+	}
+	sort.Strings(candidates)
+	for _, key := range candidates {
+		if len(c.movingAverage) >= c.MaxKeys {
+			break
+		}
+		newAvg := adjustAverage(0, counts[key], c.Weight)
 		if newAvg >= c.AgeOutValue {
 			c.movingAverage[key] = newAvg
 		}

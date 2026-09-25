@@ -179,6 +179,69 @@ func TestEMAThroughputCalculator_IgnoresPoisonCounts(t *testing.T) {
 	assert.True(t, found, "a valid count alongside a poison one must still be tracked")
 }
 
+// Two calculators fed identical over-cap counts across several intervals
+// must admit the identical subset of keys, and that subset must be the
+// sorted-first N candidate keys each interval, not just equal to each other.
+func TestEMAThroughputCalculator_MaxKeysDeterministicAdmission(t *testing.T) {
+	a := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5, AgeOutValue: 0.5, MaxKeys: 3}
+	b := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5, AgeOutValue: 0.5, MaxKeys: 3}
+
+	counts := map[string]float64{"charlie": 10, "alpha": 10, "echo": 10, "bravo": 10, "delta": 10}
+	for i := 0; i < 3; i++ {
+		a.Update(counts)
+		b.Update(counts)
+	}
+
+	ratesA := a.Rates()
+	ratesB := b.Rates()
+	assert.Equal(t, ratesA, ratesB, "two calculators fed identical over-cap counts must admit the identical keys")
+	assert.Len(t, ratesA, 3, "admission must stop at MaxKeys")
+	assert.Contains(t, ratesA, "alpha")
+	assert.Contains(t, ratesA, "bravo")
+	assert.Contains(t, ratesA, "charlie")
+	assert.NotContains(t, ratesA, "delta", "delta and echo sort after the first 3 admitted keys")
+	assert.NotContains(t, ratesA, "echo")
+}
+
+// Once a tracked key ages out, MaxKeys must admit a previously-rejected key
+// on a later Update: overflow is not a permanent ban.
+func TestEMAThroughputCalculator_MaxKeysFreesSlotOnAgeOut(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5, AgeOutValue: 0.5, MaxKeys: 1}
+	c.Update(map[string]float64{"a": 10, "z": 10})
+	assert.Contains(t, c.Rates(), "a", "a sorts first and should be admitted")
+	assert.NotContains(t, c.Rates(), "z", "z should be rejected while a occupies the single slot")
+
+	// Stop sending "a" so it ages out, freeing the slot.
+	for i := 0; i < 10; i++ {
+		c.Update(map[string]float64{"z": 10})
+	}
+	_, found := c.movingAverageState()["a"]
+	assert.False(t, found, "a must have aged out")
+	assert.Contains(t, c.Rates(), "z", "z must be admitted once a's slot frees up")
+}
+
+// Overflow keys must be absent from Rates entirely, not present with a zero
+// or invented rate, while admitted keys keep correct rate values.
+func TestEMAThroughputCalculator_MaxKeysOverflowAbsentFromRates(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2, MaxKeys: 1}
+	solo := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
+	for i := 0; i < 5; i++ {
+		c.Update(map[string]float64{"admitted": 40, "overflow": 40})
+		solo.Update(map[string]float64{"admitted": 40})
+	}
+	rates := c.Rates()
+	_, found := rates["overflow"]
+	assert.False(t, found, "overflow key must be entirely absent from Rates")
+	assert.Equal(t, solo.Rates()["admitted"], rates["admitted"], "admitted key's rate must match a calculator that only ever saw it")
+}
+
+// MaxKeys left at its zero value must behave exactly as before: no cap.
+func TestEMAThroughputCalculator_MaxKeysZeroIsUnbounded(t *testing.T) {
+	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.5, AgeOutValue: 0.5}
+	c.Update(map[string]float64{"a": 10, "b": 10, "c": 10, "d": 10})
+	assert.Len(t, c.Rates(), 4, "with MaxKeys unset, all valid keys must be tracked")
+}
+
 func TestEMAThroughputCalculator_AgesOut(t *testing.T) {
 	c := &EMAThroughputCalculator{GoalThroughputPerSec: 10, AdjustmentInterval: time.Second, Weight: 0.2, AgeOutValue: 0.2}
 	for i := 0; i < 100; i++ {

@@ -250,6 +250,122 @@ func TestWindowedThroughputCalculator_UpdateSkipsInvalidCounts(t *testing.T) {
 	assert.Equal(t, map[string]int{"real": 2}, rates, "only the finite, positive count survives")
 }
 
+// Two calculators fed identical over-cap counts across several ticks must
+// admit the identical subset of keys, and that subset must be the
+// sorted-first N candidate keys, not just equal to each other.
+func TestWindowedThroughputCalculator_MaxKeysDeterministicAdmission(t *testing.T) {
+	a := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second, MaxKeys: 3}
+	b := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second, MaxKeys: 3}
+
+	counts := map[string]float64{"charlie": 10, "alpha": 10, "echo": 10, "bravo": 10, "delta": 10}
+	for i := 0; i < 3; i++ {
+		a.Update(counts)
+		b.Update(counts)
+	}
+
+	ratesA := a.Rates()
+	ratesB := b.Rates()
+	assert.Equal(t, ratesA, ratesB, "two calculators fed identical over-cap counts must admit the identical keys")
+	assert.Len(t, ratesA, 3, "admission must stop at MaxKeys")
+	assert.Contains(t, ratesA, "alpha")
+	assert.Contains(t, ratesA, "bravo")
+	assert.Contains(t, ratesA, "charlie")
+	assert.NotContains(t, ratesA, "delta", "delta and echo sort after the first 3 admitted keys")
+	assert.NotContains(t, ratesA, "echo")
+}
+
+// Once a key's buckets all evict out of the window, MaxKeys must admit a
+// previously-rejected key on a later Update: overflow is not a permanent ban.
+func TestWindowedThroughputCalculator_MaxKeysFreesSlotOnEviction(t *testing.T) {
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 3 * time.Second, MaxKeys: 1}
+	c.Update(map[string]float64{"a": 10, "z": 10})
+	assert.Contains(t, c.Rates(), "a", "a sorts first and should be admitted")
+	assert.NotContains(t, c.Rates(), "z", "z should be rejected while a occupies the single slot")
+
+	// Drain the 3-tick window with empty ticks so a's bucket evicts.
+	c.Update(map[string]float64{})
+	c.Update(map[string]float64{})
+	c.Update(map[string]float64{})
+	assert.Empty(t, c.Rates(), "a must have evicted out of the window")
+
+	c.Update(map[string]float64{"z": 10})
+	assert.Contains(t, c.Rates(), "z", "z must be admitted once a's slot frees up")
+}
+
+// Overflow keys must be absent from Rates entirely, not present with a zero
+// or invented rate, while admitted keys keep correct rate values.
+func TestWindowedThroughputCalculator_MaxKeysOverflowAbsentFromRates(t *testing.T) {
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second, MaxKeys: 1}
+	solo := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
+	for i := 0; i < 3; i++ {
+		c.Update(map[string]float64{"admitted": 40, "overflow": 40})
+		solo.Update(map[string]float64{"admitted": 40})
+	}
+	rates := c.Rates()
+	_, found := rates["overflow"]
+	assert.False(t, found, "overflow key must be entirely absent from Rates")
+	assert.Equal(t, solo.Rates()["admitted"], rates["admitted"], "admitted key's rate must match a calculator that only ever saw it")
+}
+
+// MaxKeys left at its zero value must behave exactly as before: no cap.
+func TestWindowedThroughputCalculator_MaxKeysZeroIsUnbounded(t *testing.T) {
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
+	c.Update(map[string]float64{"a": 10, "b": 10, "c": 10, "d": 10})
+	assert.Len(t, c.Rates(), 4, "with MaxKeys unset, all valid keys must be tracked")
+}
+
+// A key present in several buckets must stay counted (and so keep other keys
+// capped) until its LAST bucket evicts, not its first, across a full ring
+// wrap.
+func TestWindowedThroughputCalculator_KeyRefsSurviveRingWrap(t *testing.T) {
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 3 * time.Second, MaxKeys: 1}
+	// "a" occupies tick 0. Two more ticks wrap the 3-slot ring back to tick 0,
+	// re-writing over "a"'s own bucket, so "a" is still present the whole way.
+	c.Update(map[string]float64{"a": 10})
+	c.Update(map[string]float64{})
+	c.Update(map[string]float64{})
+	assert.Contains(t, c.Rates(), "a", "a's own bucket is still in the 3-tick window")
+	assert.Equal(t, 1, c.keyRefs["a"], "a must still be referenced by exactly one bucket")
+
+	// A new key must still be rejected: "a" still occupies the only slot.
+	c.Update(map[string]float64{"z": 10})
+	assert.NotContains(t, c.Rates(), "z", "z must be rejected while a's bucket is still in the window")
+
+	// One more tick evicts a's original bucket entirely.
+	c.Update(map[string]float64{})
+	assert.NotContains(t, c.Rates(), "a", "a must have fully evicted")
+}
+
+// LoadState of an over-cap blob must keep every loaded key, and must block
+// new-key admission until the tracked count drops back under the cap.
+func TestWindowedThroughputCalculator_MaxKeysLoadStateAllowsOverCapBlob(t *testing.T) {
+	source := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 3 * time.Second}
+	source.Update(map[string]float64{"a": 10, "b": 10, "c": 10})
+	state, err := source.SaveState()
+	assert.NoError(t, err)
+
+	c := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 3 * time.Second, MaxKeys: 1}
+	assert.NoError(t, c.LoadState(state))
+	rates := c.Rates()
+	assert.Contains(t, rates, "a", "an over-cap loaded blob must keep all its keys")
+	assert.Contains(t, rates, "b")
+	assert.Contains(t, rates, "c")
+
+	// New-key admission is blocked while the tracked count exceeds MaxKeys.
+	// a, b, c stay admitted every tick (already-tracked keys are always kept),
+	// so they now occupy two of the three buckets in the window.
+	c.Update(map[string]float64{"a": 10, "b": 10, "c": 10, "new": 10})
+	assert.NotContains(t, c.Rates(), "new", "a new key must not be admitted while over cap")
+
+	// Drain until both buckets carrying the loaded keys evict, then a new key
+	// can be admitted.
+	c.Update(map[string]float64{})
+	c.Update(map[string]float64{})
+	c.Update(map[string]float64{})
+	c.Update(map[string]float64{"new": 10})
+	assert.Contains(t, c.Rates(), "new", "a new key must be admitted once the tracked count drops under the cap")
+}
+
 func TestWindowedThroughputCalculator_ZeroCountKeysDoNotDilute(t *testing.T) {
 	solo := &WindowedThroughputCalculator{GoalThroughputPerSec: 2, UpdateFrequency: time.Second, LookbackFrequency: 5 * time.Second}
 	solo.Update(map[string]float64{"real": 20})
