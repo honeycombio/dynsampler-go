@@ -82,7 +82,7 @@ type EMAThroughput struct {
 
 	savedSampleRates map[string]int
 	currentCounts    map[string]float64
-	calc             *EMAThroughputCalculator
+	movingAverage    map[string]float64
 	burstThreshold   float64
 	currentBurstSum  float64
 	intervalCount    uint
@@ -147,7 +147,9 @@ func (e *EMAThroughput) Start() error {
 	if e.savedSampleRates == nil {
 		e.savedSampleRates = make(map[string]int)
 	}
-	e.ensureCalc()
+	if e.movingAverage == nil {
+		e.movingAverage = make(map[string]float64)
+	}
 	e.burstSignal = make(chan struct{})
 	e.done = make(chan struct{})
 
@@ -203,24 +205,40 @@ func (e *EMAThroughput) updateMaps() {
 	tmpCounts := e.currentCounts
 	e.currentCounts = make(map[string]float64)
 	e.currentBurstSum = 0
-	// Sync the calculator with the current config (picks up SetGoalThroughputPerSec)
-	// before it folds this interval and recomputes rates.
-	e.ensureCalc()
 	e.lock.Unlock()
 
-	e.calc.Update(tmpCounts)
+	e.updateEMA(tmpCounts)
 
-	// Sum the moving average for burst detection. This is checked in
-	// GetSampleRate so we grab the lock when we update it.
+	// Goal events to send this interval is the total count of events in the EMA
+	// divided by the desired average sample rate
 	var sumEvents float64
-	for _, count := range e.calc.movingAverageState() {
+	for _, count := range e.movingAverage {
 		sumEvents += math.Max(1, count)
 	}
+
+	// Store this for burst detection. This is checked in GetSampleRate
+	// so we need to grab the lock when we update it.
 	e.lock.Lock()
 	e.burstThreshold = sumEvents * e.BurstMultiple
+	goalThroughputPerSec := e.GoalThroughputPerSec
 	e.lock.Unlock()
 
-	newSavedSampleRates := e.calc.Rates()
+	// Calculate the desired average sample rate per second based on the volume we've received.
+	// This is the number of events we'd like to let through per adjustment interval.
+	goalCount := float64(goalThroughputPerSec) * e.AdjustmentInterval.Seconds()
+
+	// goalRatio is the goalCount divided by the sum of all the log values - it
+	// determines what percentage of the total event space belongs to each key
+	var logSum float64
+	for _, count := range e.movingAverage {
+		// We take the max of (1, count) because count * weight is < 1 for
+		// very small counts, which throws off the logSum and can cause
+		// incorrect samples rates to be computed when throughput is low
+		logSum += math.Log10(math.Max(1, count))
+	}
+	goalRatio := goalCount / logSum
+
+	newSavedSampleRates := calculateSampleRates(goalRatio, e.movingAverage)
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	e.savedSampleRates = newSavedSampleRates
@@ -276,19 +294,40 @@ func (e *EMAThroughput) GetSampleRateMulti(key string, count int) int {
 	return 1
 }
 
-// ensureCalc creates the EMA calculator if needed and syncs it with the
-// sampler's current configuration, so a runtime SetGoalThroughputPerSec takes
-// effect on the next update. The calculator holds the moving average and does
-// the fold and rate computation; EMAThroughput is the timer-driven wrapper
-// that feeds it and adds burst detection, state persistence and metrics.
-func (e *EMAThroughput) ensureCalc() {
-	if e.calc == nil {
-		e.calc = &EMAThroughputCalculator{}
+func (e *EMAThroughput) updateEMA(newCounts map[string]float64) {
+	keysToUpdate := make([]string, 0, len(e.movingAverage))
+	for key := range e.movingAverage {
+		keysToUpdate = append(keysToUpdate, key)
 	}
-	e.calc.Weight = e.Weight
-	e.calc.AgeOutValue = e.AgeOutValue
-	e.calc.GoalThroughputPerSec = float64(e.GoalThroughputPerSec)
-	e.calc.AdjustmentInterval = e.AdjustmentInterval
+
+	// Update any existing keys with new values
+	for _, key := range keysToUpdate {
+		var newAvg float64
+		// Was this key seen in the last interval? Adjust by that amount
+		if val, found := newCounts[key]; found {
+			newAvg = adjustAverage(e.movingAverage[key], val, e.Weight)
+		} else {
+			// Otherwise adjust by zero
+			newAvg = adjustAverage(e.movingAverage[key], 0, e.Weight)
+		}
+
+		// Age out this value if it's too small to care about for calculating sample rates
+		// This is also necessary to keep our map from going forever.
+		if newAvg < e.AgeOutValue {
+			delete(e.movingAverage, key)
+		} else {
+			e.movingAverage[key] = newAvg
+		}
+		// We've processed this key - don't process it again when we look at new counts
+		delete(newCounts, key)
+	}
+
+	for key := range newCounts {
+		newAvg := adjustAverage(0, newCounts[key], e.Weight)
+		if newAvg >= e.AgeOutValue {
+			e.movingAverage[key] = newAvg
+		}
+	}
 }
 
 type emaThroughputState struct {
@@ -305,10 +344,10 @@ func (e *EMAThroughput) SaveState() ([]byte, error) {
 	if e.savedSampleRates == nil {
 		return nil, errors.New("saved sample rate map is nil")
 	}
-	if e.calc == nil {
+	if e.movingAverage == nil {
 		return nil, errors.New("moving average map is nil")
 	}
-	s := &emaThroughputState{SavedSampleRates: e.savedSampleRates, MovingAverage: e.calc.movingAverageState()}
+	s := &emaThroughputState{SavedSampleRates: e.savedSampleRates, MovingAverage: e.movingAverage}
 	return json.Marshal(s)
 }
 
@@ -326,8 +365,7 @@ func (e *EMAThroughput) LoadState(state []byte) error {
 
 	// Load the previously calculated sample rates
 	e.savedSampleRates = s.SavedSampleRates
-	e.ensureCalc()
-	e.calc.loadMovingAverage(s.MovingAverage)
+	e.movingAverage = s.MovingAverage
 	// Allow GetSampleRate to return calculated sample rates from the loaded map
 	e.haveData = true
 
