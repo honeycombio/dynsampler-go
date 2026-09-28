@@ -28,11 +28,10 @@ func TestEMAThroughputSetGoalThroughputPerSec(t *testing.T) {
 }
 
 func TestUpdateEMAThroughput(t *testing.T) {
-	// updateEMA now lives on EMAThroughputCalculator; EMAThroughput delegates
-	// its fold to it, so this exercises the same code path.
-	c := &EMAThroughputCalculator{
-		Weight:      0.2,
-		AgeOutValue: 0.2,
+	e := &EMAThroughput{
+		movingAverage: make(map[string]float64),
+		Weight:        0.2,
+		AgeOutValue:   0.2,
 	}
 
 	tests := []struct {
@@ -56,10 +55,10 @@ func TestUpdateEMAThroughput(t *testing.T) {
 		counts["a"] = tt.keyAValue
 		counts["b"] = tt.keyBValue
 		counts["c"] = tt.keyCValue
-		c.Update(counts)
-		assert.Equal(t, tt.keyAExpected, math.Round(c.movingAverageState()["a"]))
-		assert.Equal(t, tt.keyBExpected, math.Round(c.movingAverageState()["b"]))
-		assert.Equal(t, tt.keyCExpected, math.Round(c.movingAverageState()["c"]))
+		e.updateEMA(counts)
+		assert.Equal(t, tt.keyAExpected, math.Round(e.movingAverage["a"]))
+		assert.Equal(t, tt.keyBExpected, math.Round(e.movingAverage["b"]))
+		assert.Equal(t, tt.keyCExpected, math.Round(e.movingAverage["c"]))
 	}
 }
 
@@ -81,6 +80,7 @@ func TestEMAThroughputSampleUpdateMapsSparseCounts(t *testing.T) {
 		AgeOutValue:          0.2,
 	}
 
+	e.movingAverage = make(map[string]float64)
 	e.savedSampleRates = make(map[string]int)
 
 	for i := 0; i <= 100; i++ {
@@ -105,20 +105,21 @@ func TestEMAThroughputAgesOutSmallValues(t *testing.T) {
 		Weight:               0.2,
 		AgeOutValue:          0.2,
 	}
+	e.movingAverage = make(map[string]float64)
 	for i := 0; i < 100; i++ {
 		e.currentCounts = map[string]float64{"foo": 500.0}
 		e.updateMaps()
 	}
-	assert.Equal(t, 1, len(e.calc.movingAverageState()))
-	assert.Equal(t, float64(500), math.Round(e.calc.movingAverageState()["foo"]))
+	assert.Equal(t, 1, len(e.movingAverage))
+	assert.Equal(t, float64(500), math.Round(e.movingAverage["foo"]))
 	for i := 0; i < 100; i++ {
 		// "observe" no occurrences of foo for many iterations
 		e.currentCounts = map[string]float64{"asdf": 1}
 		e.updateMaps()
 	}
-	_, found := e.calc.movingAverageState()["foo"]
+	_, found := e.movingAverage["foo"]
 	assert.Equal(t, false, found)
-	_, found = e.calc.movingAverageState()["asdf"]
+	_, found = e.movingAverage["asdf"]
 	assert.Equal(t, true, found)
 }
 
@@ -152,7 +153,7 @@ func TestEMAThroughputBurstDetection(t *testing.T) {
 	assert.Equal(t, float64(0), e.currentBurstSum)
 
 	// ensure EMA is updated
-	assert.Equal(t, float64(501), e.calc.movingAverageState()["bar"])
+	assert.Equal(t, float64(501), e.movingAverage["bar"])
 }
 
 func TestEMAThroughputUpdateMapsRace(t *testing.T) {
@@ -181,7 +182,7 @@ func TestEMAThroughputSampleRateSaveState(t *testing.T) {
 
 	esr.lock.Lock()
 	esr.savedSampleRates = map[string]int{"foo": 2, "bar": 4}
-	esr.calc.loadMovingAverage(map[string]float64{"foo": 500.1234, "bar": 9999.99})
+	esr.movingAverage = map[string]float64{"foo": 500.1234, "bar": 9999.99}
 	esr.haveData = true
 	esr.lock.Unlock()
 
@@ -204,8 +205,8 @@ func TestEMAThroughputSampleRateSaveState(t *testing.T) {
 	assert.Equal(t, 4, newSampler.GetSampleRate("bar"))
 	esr2.lock.Lock()
 	defer esr2.lock.Unlock()
-	assert.Equal(t, float64(500.1234), esr2.calc.movingAverageState()["foo"])
-	assert.Equal(t, float64(9999.99), esr2.calc.movingAverageState()["bar"])
+	assert.Equal(t, float64(500.1234), esr2.movingAverage["foo"])
+	assert.Equal(t, float64(9999.99), esr2.movingAverage["bar"])
 }
 
 // This is a long test that generates a lot of random data and run it through the sampler
@@ -233,6 +234,7 @@ func TestEMAThroughputSampleRateHitsTargetRate(t *testing.T) {
 				Weight:               0.5,
 				AgeOutValue:          0.5,
 				currentCounts:        make(map[string]float64),
+				movingAverage:        make(map[string]float64),
 			}
 
 			// build a consistent set of keys to use. Deterministic keys (rather
