@@ -43,6 +43,7 @@ func TestEMAThroughput_OverflowSampleRate_DoesNotAffectTrackedKeys(t *testing.T)
 		OverflowSampleRate:   20,
 	}
 	e.savedSampleRates = make(map[string]int)
+	e.movingAverage = make(map[string]float64)
 
 	for i := 0; i < 100; i++ {
 		e.currentCounts = map[string]float64{"foo": 500}
