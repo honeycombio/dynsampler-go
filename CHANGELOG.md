@@ -6,8 +6,8 @@ This version lets the timer samplers take a fractional throughput goal, so a fle
 
 ### ⚠️ Breaking changes
 
+- `SetGoalThroughputPerSec` now takes a `float64` instead of an `int` on `EMAThroughput`, `WindowedThroughput` and `TotalThroughput`, so a fleet-wide budget divided across instances is no longer truncated. Callers passing an int variable need a `float64(...)` conversion. Untyped literals are unaffected. Anything resolving this method through a runtime type assertion stops matching until it is updated to the new signature.
 - `GoalThroughputPerSec` on `EMAThroughput` and `TotalThroughput` is now a `float64`, matching `WindowedThroughput`. Code assigning an int variable to the field needs a `float64(...)` conversion.
-- `SetGoalThroughputPerSec(int)` is deprecated in favour of `SetGoalThroughputPerSecFloat(float64)`. It keeps its signature and behaviour for now and will be removed in a later release.
 
 ## What's Changed
 
