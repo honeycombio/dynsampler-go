@@ -39,6 +39,11 @@ type AvgSampleRate struct {
 	// existing keys will continue to be be counted.
 	MaxKeys int
 
+	// OverflowSampleRate, if greater than 0, is the sample rate returned for a key
+	// that is rejected because MaxKeys has been reached, instead of the default
+	// keep-everything rate of 1. Defaults to 0, which preserves that default behavior.
+	OverflowSampleRate int
+
 	savedSampleRates map[string]int
 	currentCounts    map[string]float64
 
@@ -164,10 +169,13 @@ func (a *AvgSampleRate) GetSampleRateMulti(key string, count int) int {
 	a.eventCount += int64(count)
 
 	// Enforce MaxKeys limit on the size of the map
+	overflowed := false
 	if a.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := a.currentCounts[key]; found || len(a.currentCounts) < a.MaxKeys {
 			a.currentCounts[key] += float64(count)
+		} else {
+			overflowed = true
 		}
 	} else {
 		a.currentCounts[key] += float64(count)
@@ -177,6 +185,9 @@ func (a *AvgSampleRate) GetSampleRateMulti(key string, count int) int {
 	}
 	if rate, found := a.savedSampleRates[key]; found {
 		return rate
+	}
+	if overflowed && a.OverflowSampleRate > 0 {
+		return a.OverflowSampleRate
 	}
 	return 1
 }

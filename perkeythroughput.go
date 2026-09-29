@@ -35,6 +35,11 @@ type PerKeyThroughput struct {
 	// existing keys will continue to be be counted.
 	MaxKeys int
 
+	// OverflowSampleRate, if greater than 0, is the sample rate returned for a key
+	// that is rejected because MaxKeys has been reached, instead of the default
+	// keep-everything rate of 1. Defaults to 0, which preserves that default behavior.
+	OverflowSampleRate int
+
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
 	done             chan struct{}
@@ -142,16 +147,22 @@ func (p *PerKeyThroughput) GetSampleRateMulti(key string, count int) int {
 	p.eventCount += int64(count)
 
 	// Enforce MaxKeys limit on the size of the map
+	overflowed := false
 	if p.MaxKeys > 0 {
 		// If a key already exists, add the count. If not, but we're under the limit, store a new key
 		if _, found := p.currentCounts[key]; found || len(p.currentCounts) < p.MaxKeys {
 			p.currentCounts[key] += count
+		} else {
+			overflowed = true
 		}
 	} else {
 		p.currentCounts[key] += count
 	}
 	if rate, found := p.savedSampleRates[key]; found {
 		return rate
+	}
+	if overflowed && p.OverflowSampleRate > 0 {
+		return p.OverflowSampleRate
 	}
 	return 1
 }
