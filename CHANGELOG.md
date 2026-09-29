@@ -1,5 +1,32 @@
 # dynsampler-go changelog
 
+## 0.7.0 2026-09-29
+
+This version lets the timer samplers take a fractional throughput goal, so a fleet-wide budget divided across instances is no longer truncated, and adds an opt-in sample rate for keys over the `MaxKeys` cap.
+
+### ⚠️ Breaking changes
+
+- `GoalThroughputPerSec` on `EMAThroughput` and `TotalThroughput` is now a `float64`, matching `WindowedThroughput`. Code assigning an int variable to the field needs a `float64(...)` conversion.
+- `SetGoalThroughputPerSec(int)` is deprecated in favour of `SetGoalThroughputPerSecFloat(float64)`. It keeps its signature and behaviour for now and will be removed in a later release.
+
+## What's Changed
+
+### 💡 Enhancements
+
+- feat: accept fractional goal throughput on the timer samplers by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/113
+- feat: opt-in OverflowSampleRate for keys over the MaxKeys cap by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/109
+
+### 🛠 Maintenance
+
+- maint: remove the unreleased caller-driven calculators by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/111
+- test: use a fixed seed in the EMA throughput target-rate test to stop CI flakes by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/103
+- maint(deps): bump github.com/stretchr/testify from 1.11.1 to 1.12.1 by @dependabot in https://github.com/honeycombio/dynsampler-go/pull/100
+- chore: remove llm-o11y and ai-o11y from codeowners by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/96
+- chore: add oss-maintainers to codeowners by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/95
+- chore(codeowners): update Agent O11y and LLM O11y teams by @benhanzl in https://github.com/honeycombio/dynsampler-go/pull/94
+- chore: update codeowners by @benhanzl in https://github.com/honeycombio/dynsampler-go/pull/93
+- chore: remove add-to-project workflow by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/92
+
 ## 0.6.4 2026-02-03
 
 This version adds the ability to dynamically adjust sampling goals and fixes a concurrency bug in the WindowedThroughput sampler.
