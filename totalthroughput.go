@@ -180,20 +180,12 @@ func (t *TotalThroughput) LoadState(state []byte) error {
 	return nil
 }
 
-// SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner.
-//
-// Deprecated: use SetGoalThroughputPerSecFloat. An int goal cannot express a
-// fleet-wide budget divided across instances, which truncates to 0 and is then
-// ignored once the per-instance share falls below 1 event per second.
-func (t *TotalThroughput) SetGoalThroughputPerSec(throughput int) {
-	t.SetGoalThroughputPerSecFloat(float64(throughput))
-}
-
-// SetGoalThroughputPerSecFloat updates the goal throughput per second in a
-// concurrency-safe manner, keeping fractional goals intact. A fleet dividing a
-// shared budget across N instances can set goal/N directly instead of
-// truncating it to a whole number of events.
-func (t *TotalThroughput) SetGoalThroughputPerSecFloat(throughput float64) {
+// SetGoalThroughputPerSec updates the goal throughput per second in a
+// concurrency-safe manner. Fractional goals are kept intact, so a fleet
+// dividing a shared budget across N instances can set goal/N directly rather
+// than truncating it to a whole number of events. Non-positive values are
+// ignored.
+func (t *TotalThroughput) SetGoalThroughputPerSec(throughput float64) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	if throughput > 0 {

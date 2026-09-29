@@ -10,11 +10,11 @@ import (
 
 // canSetGoalThroughputPerSec mirrors the interface Refinery asserts against at
 // runtime (sample.CanSetGoalThroughputPerSec). Refinery resolves it with a type
-// assertion rather than a compile-time check, so changing this method's
-// signature would make that assertion fail silently and stop Refinery adjusting
-// its goals. These assertions keep the int method's shape pinned.
+// assertion rather than a compile-time check, so a change to this method's
+// signature makes that assertion fail silently rather than at build time. These
+// assertions keep the shape pinned on this side.
 type canSetGoalThroughputPerSec interface {
-	SetGoalThroughputPerSec(int)
+	SetGoalThroughputPerSec(float64)
 }
 
 var (
@@ -23,49 +23,37 @@ var (
 	_ canSetGoalThroughputPerSec = (*TotalThroughput)(nil)
 )
 
-// canSetGoalThroughputPerSecFloat is the fractional counterpart, used by callers
-// dividing a fleet-wide budget across instances.
-type canSetGoalThroughputPerSecFloat interface {
-	SetGoalThroughputPerSecFloat(float64)
-}
-
-var (
-	_ canSetGoalThroughputPerSecFloat = (*EMAThroughput)(nil)
-	_ canSetGoalThroughputPerSecFloat = (*WindowedThroughput)(nil)
-	_ canSetGoalThroughputPerSecFloat = (*TotalThroughput)(nil)
-)
-
-func TestSetGoalThroughputPerSecFloat_KeepsFraction(t *testing.T) {
+func TestSetGoalThroughputPerSec_KeepsFraction(t *testing.T) {
 	t.Run("EMAThroughput", func(t *testing.T) {
 		e := &EMAThroughput{GoalThroughputPerSec: 100}
-		e.SetGoalThroughputPerSecFloat(0.25)
+		e.SetGoalThroughputPerSec(0.25)
 		assert.Equal(t, 0.25, e.GoalThroughputPerSec)
 	})
 
 	t.Run("WindowedThroughput", func(t *testing.T) {
 		w := &WindowedThroughput{GoalThroughputPerSec: 100}
-		w.SetGoalThroughputPerSecFloat(0.25)
+		w.SetGoalThroughputPerSec(0.25)
 		assert.Equal(t, 0.25, w.GoalThroughputPerSec)
 	})
 
 	t.Run("TotalThroughput", func(t *testing.T) {
 		tt := &TotalThroughput{GoalThroughputPerSec: 100}
-		tt.SetGoalThroughputPerSecFloat(0.25)
+		tt.SetGoalThroughputPerSec(0.25)
 		assert.Equal(t, 0.25, tt.GoalThroughputPerSec)
 	})
 }
 
-func TestSetGoalThroughputPerSecFloat_IgnoresNonPositive(t *testing.T) {
+func TestSetGoalThroughputPerSec_IgnoresNonPositive(t *testing.T) {
 	e := &EMAThroughput{GoalThroughputPerSec: 100}
-	e.SetGoalThroughputPerSecFloat(0)
+	e.SetGoalThroughputPerSec(0)
 	assert.Equal(t, float64(100), e.GoalThroughputPerSec)
-	e.SetGoalThroughputPerSecFloat(-0.5)
+	e.SetGoalThroughputPerSec(-0.5)
 	assert.Equal(t, float64(100), e.GoalThroughputPerSec)
 }
 
-// The int setter now delegates to the float one, so its documented behaviour
-// (positive values applied, everything else ignored) must be unchanged.
-func TestSetGoalThroughputPerSec_IntStillApplies(t *testing.T) {
+// Whole-number goals must keep working unchanged, including an untyped int
+// literal, which is how most callers set a goal from config.
+func TestSetGoalThroughputPerSec_WholeNumbersStillApply(t *testing.T) {
 	w := &WindowedThroughput{GoalThroughputPerSec: 1}
 	w.SetGoalThroughputPerSec(250)
 	assert.Equal(t, float64(250), w.GoalThroughputPerSec)
@@ -86,7 +74,7 @@ func TestEMAThroughputFractionalGoalProducesHigherRates(t *testing.T) {
 			Weight:             0.5,
 			AgeOutValue:        0.5,
 		}
-		e.SetGoalThroughputPerSecFloat(goal)
+		e.SetGoalThroughputPerSec(goal)
 		e.movingAverage = make(map[string]float64)
 		e.savedSampleRates = make(map[string]int)
 		for i := 0; i < 100; i++ {
