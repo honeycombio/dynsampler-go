@@ -33,7 +33,11 @@ type TotalThroughput struct {
 	// GoalThroughputPerSec is the target number of events to send per second.
 	// Sample rates are generated to squash the total throughput down to match the
 	// goal throughput. Actual throughput may exceed goal throughput. default 100
-	GoalThroughputPerSec int
+	//
+	// Fractional goals below 1 are valid and useful when a fleet-wide budget is
+	// divided across many instances. Use SetGoalThroughputPerSecFloat to set one
+	// at runtime without truncating.
+	GoalThroughputPerSec float64
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys used to build
 	// the sample rate map within the interval defined by `ClearFrequencySec`. Once
@@ -120,7 +124,7 @@ func (t *TotalThroughput) updateMaps() {
 		return
 	}
 	// figure out our target throughput per key over ClearFrequencyDuration
-	totalGoalThroughput := float64(goalThroughputPerSec) * t.ClearFrequencyDuration.Seconds()
+	totalGoalThroughput := goalThroughputPerSec * t.ClearFrequencyDuration.Seconds()
 	// split the total throughput equally across the number of keys.
 	throughputPerKey := float64(totalGoalThroughput) / float64(numKeys)
 	// for each key, calculate sample rate by dividing counted events by the
@@ -176,8 +180,20 @@ func (t *TotalThroughput) LoadState(state []byte) error {
 	return nil
 }
 
-// SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner
+// SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner.
+//
+// Deprecated: use SetGoalThroughputPerSecFloat. An int goal cannot express a
+// fleet-wide budget divided across instances, which truncates to 0 and is then
+// ignored once the per-instance share falls below 1 event per second.
 func (t *TotalThroughput) SetGoalThroughputPerSec(throughput int) {
+	t.SetGoalThroughputPerSecFloat(float64(throughput))
+}
+
+// SetGoalThroughputPerSecFloat updates the goal throughput per second in a
+// concurrency-safe manner, keeping fractional goals intact. A fleet dividing a
+// shared budget across N instances can set goal/N directly instead of
+// truncating it to a whole number of events.
+func (t *TotalThroughput) SetGoalThroughputPerSecFloat(throughput float64) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	if throughput > 0 {

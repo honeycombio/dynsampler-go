@@ -54,7 +54,11 @@ type EMAThroughput struct {
 	// GoalThroughputPerSec is the target number of events to send per second.
 	// Sample rates are generated to squash the total throughput down to match the
 	// goal throughput. Actual throughput may exceed goal throughput. default 100
-	GoalThroughputPerSec int
+	//
+	// Fractional goals below 1 are valid and useful when a fleet-wide budget is
+	// divided across many instances. Use SetGoalThroughputPerSecFloat to set one
+	// at runtime without truncating.
+	GoalThroughputPerSec float64
 
 	// MaxKeys, if greater than 0, limits the number of distinct keys tracked in EMA.
 	// Once MaxKeys is reached, new keys will not be included in the sample rate map, but
@@ -230,7 +234,7 @@ func (e *EMAThroughput) updateMaps() {
 
 	// Calculate the desired average sample rate per second based on the volume we've received.
 	// This is the number of events we'd like to let through per adjustment interval.
-	goalCount := float64(goalThroughputPerSec) * e.AdjustmentInterval.Seconds()
+	goalCount := goalThroughputPerSec * e.AdjustmentInterval.Seconds()
 
 	// goalRatio is the goalCount divided by the sum of all the log values - it
 	// determines what percentage of the total event space belongs to each key
@@ -383,8 +387,20 @@ func (e *EMAThroughput) LoadState(state []byte) error {
 	return nil
 }
 
-// SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner
+// SetGoalThroughputPerSec updates the goal throughput per second in a concurrency-safe manner.
+//
+// Deprecated: use SetGoalThroughputPerSecFloat. An int goal cannot express a
+// fleet-wide budget divided across instances, which truncates to 0 and is then
+// ignored once the per-instance share falls below 1 event per second.
 func (e *EMAThroughput) SetGoalThroughputPerSec(throughput int) {
+	e.SetGoalThroughputPerSecFloat(float64(throughput))
+}
+
+// SetGoalThroughputPerSecFloat updates the goal throughput per second in a
+// concurrency-safe manner, keeping fractional goals intact. A fleet dividing a
+// shared budget across N instances can set goal/N directly instead of
+// truncating it to a whole number of events.
+func (e *EMAThroughput) SetGoalThroughputPerSecFloat(throughput float64) {
 	e.lock.Lock()
 	defer e.lock.Unlock()
 	if throughput > 0 {

@@ -17,14 +17,14 @@ func TestEMAThroughputSetGoalThroughputPerSec(t *testing.T) {
 
 	// Test SetGoalThroughputPerSec method
 	e.SetGoalThroughputPerSec(200)
-	assert.Equal(t, 200, e.GoalThroughputPerSec)
+	assert.Equal(t, float64(200), e.GoalThroughputPerSec)
 
 	// Test that invalid values are ignored
 	e.SetGoalThroughputPerSec(0)
-	assert.Equal(t, 200, e.GoalThroughputPerSec)
+	assert.Equal(t, float64(200), e.GoalThroughputPerSec)
 
 	e.SetGoalThroughputPerSec(-10)
-	assert.Equal(t, 200, e.GoalThroughputPerSec)
+	assert.Equal(t, float64(200), e.GoalThroughputPerSec)
 }
 
 func TestUpdateEMAThroughput(t *testing.T) {
@@ -230,7 +230,7 @@ func TestEMAThroughputSampleRateHitsTargetRate(t *testing.T) {
 		for _, keyCount := range testKeyCount {
 			sampler := &EMAThroughput{
 				AdjustmentInterval:   1 * time.Second,
-				GoalThroughputPerSec: throughput,
+				GoalThroughputPerSec: float64(throughput),
 				Weight:               0.5,
 				AgeOutValue:          0.5,
 				currentCounts:        make(map[string]float64),
