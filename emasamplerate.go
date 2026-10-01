@@ -145,7 +145,11 @@ func (e *EMASampleRate) Start() error {
 	if e.movingAverage == nil {
 		e.movingAverage = make(map[string]float64)
 	}
-	e.burstSignal = make(chan struct{})
+	// Buffered so the non-blocking send below in GetSampleRateMulti cannot
+	// drop a burst while the goroutine started here is busy rather than parked
+	// on its select. Burst signals coalesce, the meaning is only that a burst
+	// happened and the maps should be recalculated, so one slot is enough.
+	e.burstSignal = make(chan struct{}, 1)
 	e.done = make(chan struct{})
 
 	go func() {
@@ -270,7 +274,9 @@ func (e *EMASampleRate) GetSampleRateMulti(key string, count int) int {
 		// reset the burst sum to prevent additional burst updates from occurring while updateMaps is running
 		e.currentBurstSum = 0
 		e.burstCount++
-		// send but don't block - consuming is blocked on updateMaps, which takes the same lock we're holding
+		// Send but don't block, the consumer takes the same lock we're holding
+		// here. burstSignal is buffered so a busy consumer delays the
+		// recalculation rather than losing the burst entirely.
 		select {
 		case e.burstSignal <- struct{}{}:
 		default:
