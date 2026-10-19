@@ -54,7 +54,15 @@ type EMASampleRate struct {
 	// MaxKeys, if greater than 0, limits the number of distinct keys tracked in EMA.
 	// Once MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
+	// Rejected keys are not counted, so they do not contribute to the rates computed
+	// for keys accepted under MaxKeys. Total output can exceed the goal while keys are
+	// being rejected.
 	MaxKeys int
+
+	// OverflowSampleRate, if greater than 0, is the sample rate returned for a key
+	// that is rejected because MaxKeys has been reached, instead of the default
+	// keep-everything rate of 1. Defaults to 0, which preserves that default behavior.
+	OverflowSampleRate int
 
 	// AgeOutValue indicates the threshold for removing keys from the EMA. The EMA of any key will approach 0
 	// if it is not repeatedly observed, but will never truly reach it, so we have to decide what constitutes "zero".
@@ -258,11 +266,14 @@ func (e *EMASampleRate) GetSampleRateMulti(key string, count int) int {
 	e.eventCount += int64(count)
 
 	// Enforce MaxKeys limit on the size of the map
+	overflowed := false
 	if e.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := e.currentCounts[key]; found || len(e.currentCounts) < e.MaxKeys {
 			e.currentCounts[key] += float64(count)
 			e.currentBurstSum += float64(count)
+		} else {
+			overflowed = true
 		}
 	} else {
 		e.currentCounts[key] += float64(count)
@@ -288,6 +299,9 @@ func (e *EMASampleRate) GetSampleRateMulti(key string, count int) int {
 	}
 	if rate, found := e.savedSampleRates[key]; found {
 		return rate
+	}
+	if overflowed && e.OverflowSampleRate > 0 {
+		return e.OverflowSampleRate
 	}
 	return 1
 }
