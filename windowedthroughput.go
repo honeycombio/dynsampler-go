@@ -46,6 +46,9 @@ type WindowedThroughput struct {
 	// the sample rate map within the interval defined by `LookbackFrequencyDuration`. Once
 	// MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
+	// Rejected keys are not counted, so they do not contribute to the rates computed
+	// for keys accepted under MaxKeys. Total output can exceed the goal while keys are
+	// being rejected.
 	// If MaxKeys is set to 0 (default), there is no upper bound on the number of distinct keys.
 	MaxKeys int
 

@@ -54,6 +54,9 @@ type EMASampleRate struct {
 	// MaxKeys, if greater than 0, limits the number of distinct keys tracked in EMA.
 	// Once MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
+	// Rejected keys are not counted, so they do not contribute to the rates computed
+	// for keys accepted under MaxKeys. Total output can exceed the goal while keys are
+	// being rejected.
 	MaxKeys int
 
 	// OverflowSampleRate, if greater than 0, is the sample rate returned for a key
