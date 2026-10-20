@@ -56,6 +56,11 @@ type PerKeyThroughput struct {
 	// sending less than that level are unaffected and the rest share what is left
 	// equally. Keys rejected because MaxKeys has been reached are not counted and
 	// so are not bounded by the maximum.
+	//
+	// The maximum bounds expected output per interval rather than guaranteeing it.
+	// Rates are fixed for the length of an interval, so a burst that arrives after
+	// one opens is sampled at the previous interval's rates and the total can
+	// overshoot until the next recalculation.
 	MaxTotalThroughputPerSec int
 
 	savedSampleRates map[string]int
