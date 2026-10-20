@@ -17,7 +17,7 @@ The following guidelines can help you choose a sampler. Depending on the shape o
 
 * If your logging system has a strict cap on the rate it can receive events, use `TotalThroughput`, which will calculate sample rates based on keeping *the entire system's* representative event throughput right around (or under) particular cap.
 
-* If your system has a rough cap on the rate it can receive events and your partitioned keyspace is fairly steady, use `PerKeyThroughput`, which will calculate sample rates based on keeping the event throughput roughly constant *per key/partition* (e.g. per user id)
+* If your system has a rough cap on the rate it can receive events and your partitioned keyspace is fairly steady, use `PerKeyThroughput`, which will calculate sample rates based on keeping the event throughput roughly constant *per key/partition* (e.g. per user id) It can also take an optional `MaxTotalThroughputPerSec`, which caps the combined throughput across all keys, lowering the allowance for the heaviest keys first.
 
 * The best choice for a system with a large key space and a large disparity between the highest volume and lowest volume keys is `AvgSampleRateWithMin` - it will increase the sample rate of higher volume traffic proportionally to the logarithm of the specific key's volume. If total traffic falls below a configured minimum, it stops sampling to avoid any sampling when the traffic is too low to warrant it.
 

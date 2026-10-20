@@ -2,6 +2,8 @@ package dynsampler
 
 import (
 	"fmt"
+	"maps"
+	"math"
 	"strconv"
 	"sync"
 	"testing"
@@ -187,11 +189,14 @@ func TestPerKeyThroughputGetSampleRate(t *testing.T) {
 
 func TestPerKeyThroughputRace(t *testing.T) {
 	p := &PerKeyThroughput{
-		PerKeyThroughputPerSec: 2,
-		currentCounts:          map[string]int{},
-		savedSampleRates:       map[string]int{},
+		ClearFrequencyDuration:   time.Second,
+		PerKeyThroughputPerSec:   2,
+		MaxTotalThroughputPerSec: 50,
+		currentCounts:            map[string]int{},
+		savedSampleRates:         map[string]int{},
 	}
 	wg := sync.WaitGroup{}
+	wg.Add(1)
 	wg.Add(1)
 	wg.Add(1)
 	// set up 100 parallel readers, each reading 1000 times
@@ -211,6 +216,13 @@ func TestPerKeyThroughputRace(t *testing.T) {
 	go func() {
 		for i := 0; i < 100; i++ {
 			p.updateMaps()
+		}
+		wg.Done()
+	}()
+	go func() {
+		for i := 1; i <= 100; i++ {
+			p.SetPerKeyThroughputPerSec(i)
+			p.SetMaxTotalThroughputPerSec(i * 10)
 		}
 		wg.Done()
 	}()
@@ -273,4 +285,249 @@ func TestPerKeyThroughput_Start(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWaterFillLevel(t *testing.T) {
+	tsts := []struct {
+		name     string
+		demands  []float64
+		capacity float64
+		expected float64
+	}{
+		{"no demands", []float64{}, 10, math.Inf(1)},
+		{"well under capacity", []float64{10, 20, 30}, 100, math.Inf(1)},
+		{"exactly at capacity", []float64{10, 20, 30}, 60, math.Inf(1)},
+		{"uniform demands", []float64{100, 100, 100, 100, 100}, 250, 50},
+		{"long tail", []float64{10, 20, 30, 100, 100}, 150, 45},
+		{"capacity below every demand", []float64{10, 20, 30}, 15, 5},
+		{"unsorted input", []float64{100, 10, 30, 20, 100}, 150, 45},
+		{"zero demands present", []float64{0, 0, 50}, 10, 10},
+	}
+	for _, tst := range tsts {
+		t.Run(tst.name, func(t *testing.T) {
+			level := waterFillLevel(tst.demands, tst.capacity)
+			if math.IsInf(tst.expected, 1) {
+				assert.True(t, math.IsInf(level, 1), "expected +Inf, got %v", level)
+				return
+			}
+			assert.InDelta(t, tst.expected, level, 0.0001)
+		})
+	}
+}
+
+func TestPerKeyThroughputMaxTotalThroughput(t *testing.T) {
+	tsts := []struct {
+		name                     string
+		perKeyThroughputPerSec   int
+		maxTotalThroughputPerSec int
+		inputCount               map[string]int
+		expectedSavedSampleRates map[string]int
+	}{
+		{
+			// the per-key demands sum to 250, well under the ceiling, so every rate
+			// matches what the per-key target alone would produce
+			name:                     "ceiling does not bind",
+			perKeyThroughputPerSec:   100,
+			maxTotalThroughputPerSec: 1000,
+			inputCount:               map[string]int{"a": 50, "b": 150, "c": 300},
+			expectedSavedSampleRates: map[string]int{"a": 1, "b": 1, "c": 3},
+		},
+		{
+			// five keys all want 100 but only 250 is available, so each is lowered to 50
+			name:                     "ceiling binds uniformly",
+			perKeyThroughputPerSec:   100,
+			maxTotalThroughputPerSec: 250,
+			inputCount:               map[string]int{"a": 1000, "b": 1000, "c": 1000, "d": 1000, "e": 1000},
+			expectedSavedSampleRates: map[string]int{"a": 20, "b": 20, "c": 20, "d": 20, "e": 20},
+		},
+		{
+			// the three small keys fit under the level of 45 and keep everything, while
+			// the two heavy keys are both lowered to that one shared level
+			name:                     "ceiling binds on a long tail",
+			perKeyThroughputPerSec:   100,
+			maxTotalThroughputPerSec: 150,
+			inputCount:               map[string]int{"s1": 10, "s2": 20, "s3": 30, "h1": 1000, "h2": 5000},
+			expectedSavedSampleRates: map[string]int{"s1": 1, "s2": 1, "s3": 1, "h1": 23, "h2": 112},
+		},
+		{
+			name:                     "ceiling below the per-key target with one key",
+			perKeyThroughputPerSec:   100,
+			maxTotalThroughputPerSec: 10,
+			inputCount:               map[string]int{"a": 1000},
+			expectedSavedSampleRates: map[string]int{"a": 100},
+		},
+		{
+			// 55 spans against a ceiling of 10 needs a rate of 6, not the 5 that
+			// rounding down would give
+			name:                     "rate rounds up when the ceiling binds",
+			perKeyThroughputPerSec:   100,
+			maxTotalThroughputPerSec: 10,
+			inputCount:               map[string]int{"a": 55},
+			expectedSavedSampleRates: map[string]int{"a": 6},
+		},
+	}
+	for _, tst := range tsts {
+		t.Run(tst.name, func(t *testing.T) {
+			p := &PerKeyThroughput{
+				ClearFrequencyDuration:   time.Second,
+				PerKeyThroughputPerSec:   tst.perKeyThroughputPerSec,
+				MaxTotalThroughputPerSec: tst.maxTotalThroughputPerSec,
+			}
+			p.currentCounts = tst.inputCount
+			p.updateMaps()
+			assert.Equal(t, tst.expectedSavedSampleRates, p.savedSampleRates)
+		})
+	}
+}
+
+func TestPerKeyThroughputZeroCeilingMatchesNoCeiling(t *testing.T) {
+	counts := map[string]int{"a": 50, "b": 150, "c": 300, "d": 12000}
+
+	withCeiling := &PerKeyThroughput{
+		ClearFrequencyDuration:   time.Second,
+		PerKeyThroughputPerSec:   100,
+		MaxTotalThroughputPerSec: 0,
+	}
+	withCeiling.currentCounts = maps.Clone(counts)
+	withCeiling.updateMaps()
+
+	withoutCeiling := &PerKeyThroughput{
+		ClearFrequencyDuration: time.Second,
+		PerKeyThroughputPerSec: 100,
+	}
+	withoutCeiling.currentCounts = maps.Clone(counts)
+	withoutCeiling.updateMaps()
+
+	assert.Equal(t, withoutCeiling.savedSampleRates, withCeiling.savedSampleRates)
+}
+
+func TestPerKeyThroughputCeilingHoldsAcrossManyKeys(t *testing.T) {
+	// 500 keys each sending 199 against a ceiling of 50000 land on a level of 100,
+	// giving a rate of 1.99 per key. Rounding that down would mean a rate of 1 and
+	// no sampling at all, taking the output to 99500, nearly twice the ceiling.
+	const (
+		numKeys  = 500
+		perKey   = 199
+		maxTotal = 50000
+	)
+	p := &PerKeyThroughput{
+		ClearFrequencyDuration:   time.Second,
+		PerKeyThroughputPerSec:   1000,
+		MaxTotalThroughputPerSec: maxTotal,
+	}
+	counts := make(map[string]int, numKeys)
+	for i := 0; i < numKeys; i++ {
+		counts["key"+strconv.Itoa(i)] = perKey
+	}
+	p.currentCounts = counts
+	p.updateMaps()
+
+	kept := 0.0
+	for k, rate := range p.savedSampleRates {
+		assert.Equal(t, 2, rate, "key %s", k)
+		kept += float64(perKey) / float64(rate)
+	}
+	assert.Len(t, p.savedSampleRates, numKeys)
+	assert.LessOrEqual(t, kept, float64(maxTotal))
+}
+
+func TestPerKeyThroughputMaxKeysExcludedFromCeiling(t *testing.T) {
+	p := &PerKeyThroughput{
+		ClearFrequencyDuration:   time.Second,
+		PerKeyThroughputPerSec:   100,
+		MaxTotalThroughputPerSec: 100,
+		MaxKeys:                  2,
+	}
+	p.currentCounts = map[string]int{}
+	p.savedSampleRates = map[string]int{}
+
+	p.GetSampleRateMulti("a", 1000)
+	p.GetSampleRateMulti("b", 1000)
+	p.GetSampleRateMulti("c", 1000) // rejected, MaxKeys reached
+
+	p.updateMaps()
+
+	// only the two accepted keys contribute demand, so the level is 50 rather than
+	// the 33 three keys would have produced
+	assert.Equal(t, map[string]int{"a": 20, "b": 20}, p.savedSampleRates)
+}
+
+func TestPerKeyThroughputFractionalClearFrequency(t *testing.T) {
+	tsts := []struct {
+		name                     string
+		clearFrequencyDuration   time.Duration
+		perKeyThroughputPerSec   int
+		maxTotalThroughputPerSec int
+		inputCount               map[string]int
+		expectedSavedSampleRates map[string]int
+	}{
+		{
+			// 10/sec over 500ms is a goal of 5 for the interval
+			name:                   "sub-second interval",
+			clearFrequencyDuration: 500 * time.Millisecond,
+			perKeyThroughputPerSec: 10,
+			inputCount:             map[string]int{"a": 100},
+			expectedSavedSampleRates: map[string]int{
+				"a": 20,
+			},
+		},
+		{
+			// and a ceiling of 4/sec is a capacity of 2 for the interval
+			name:                     "sub-second interval with a ceiling",
+			clearFrequencyDuration:   500 * time.Millisecond,
+			perKeyThroughputPerSec:   10,
+			maxTotalThroughputPerSec: 4,
+			inputCount:               map[string]int{"a": 100},
+			expectedSavedSampleRates: map[string]int{"a": 50},
+		},
+		{
+			// 10/sec over 1.5s is a goal of 15, not the 10 that truncating to whole
+			// seconds would give
+			name:                     "fractional interval above a second",
+			clearFrequencyDuration:   1500 * time.Millisecond,
+			perKeyThroughputPerSec:   10,
+			inputCount:               map[string]int{"a": 150},
+			expectedSavedSampleRates: map[string]int{"a": 10},
+		},
+	}
+	for _, tst := range tsts {
+		t.Run(tst.name, func(t *testing.T) {
+			p := &PerKeyThroughput{
+				ClearFrequencyDuration:   tst.clearFrequencyDuration,
+				PerKeyThroughputPerSec:   tst.perKeyThroughputPerSec,
+				MaxTotalThroughputPerSec: tst.maxTotalThroughputPerSec,
+			}
+			p.currentCounts = tst.inputCount
+			p.updateMaps()
+			assert.Equal(t, tst.expectedSavedSampleRates, p.savedSampleRates)
+		})
+	}
+}
+
+func TestPerKeyThroughputSetters(t *testing.T) {
+	p := &PerKeyThroughput{
+		ClearFrequencyDuration:   time.Second,
+		PerKeyThroughputPerSec:   100,
+		MaxTotalThroughputPerSec: 1000,
+	}
+
+	p.SetPerKeyThroughputPerSec(50)
+	assert.Equal(t, 50, p.PerKeyThroughputPerSec)
+	p.SetPerKeyThroughputPerSec(0)
+	assert.Equal(t, 50, p.PerKeyThroughputPerSec)
+	p.SetPerKeyThroughputPerSec(-1)
+	assert.Equal(t, 50, p.PerKeyThroughputPerSec)
+
+	p.SetMaxTotalThroughputPerSec(100)
+	assert.Equal(t, 100, p.MaxTotalThroughputPerSec)
+	p.SetMaxTotalThroughputPerSec(0)
+	assert.Equal(t, 100, p.MaxTotalThroughputPerSec)
+	p.SetMaxTotalThroughputPerSec(-1)
+	assert.Equal(t, 100, p.MaxTotalThroughputPerSec)
+
+	// the new values are the ones updateMaps uses: five keys sharing a ceiling of
+	// 100 gives a level of 20, not the 200 the original ceiling would have allowed
+	p.currentCounts = map[string]int{"a": 1000, "b": 1000, "c": 1000, "d": 1000, "e": 1000}
+	p.updateMaps()
+	assert.Equal(t, map[string]int{"a": 50, "b": 50, "c": 50, "d": 50, "e": 50}, p.savedSampleRates)
 }
