@@ -400,7 +400,8 @@ func TestEMASampleRateSaveState(t *testing.T) {
 // number of times. Most of the time, the average sample rate of observations kept should be close
 // to the target rate
 func TestEMASampleRateHitsTargetRate(t *testing.T) {
-	mrand.Seed(time.Now().Unix())
+	// a fixed seed, so the statistical assertions below are reproducible
+	rng := mrand.New(mrand.NewSource(7))
 	testRates := []int{50, 100}
 	testKeyCount := []int{10, 100}
 	tolerancePct := float64(0.2)
@@ -413,16 +414,19 @@ func TestEMASampleRateHitsTargetRate(t *testing.T) {
 		for _, keyCount := range testKeyCount {
 			sampler := &EMASampleRate{GoalSampleRate: rate, Weight: 0.5, AgeOutValue: 0.5, currentCounts: make(map[string]float64), movingAverage: make(map[string]float64)}
 
-			// build a consistent set of keys to use
+			// Deterministic keys, because calculateSampleRates sorts keys and
+			// redistributes spare allocation in that order. randomString draws
+			// from crypto/rand, which no seed reaches, so random names moved the
+			// resulting rates on every run and are what made this test flake.
 			keys := make([]string, keyCount)
 			for i := 0; i < keyCount; i++ {
-				keys[i] = randomString(8)
+				keys[i] = fmt.Sprintf("key-%d", i)
 			}
 
 			for i, key := range keys {
 				// generate key counts of different magnitudes
 				base := math.Pow10(i%3 + 1)
-				count := float64(((i%10)+1))*base + float64(mrand.Intn(int(base)))
+				count := float64(((i%10)+1))*base + float64(rng.Intn(int(base)))
 				sampler.currentCounts[key] = count
 			}
 
@@ -436,10 +440,10 @@ func TestEMASampleRateHitsTargetRate(t *testing.T) {
 				totalKeptObservations := 0
 				for j, key := range keys {
 					base := math.Pow10(j%3 + 1)
-					count := float64(((j%10)+1))*base + float64(mrand.Intn(int(base)))
+					count := float64(((j%10)+1))*base + float64(rng.Intn(int(base)))
 					for k := 0; k < int(count); k++ {
 						rate := sampler.GetSampleRate(key)
-						if mrand.Intn(rate) == 0 {
+						if rng.Intn(rate) == 0 {
 							totalSampleRate += rate
 							totalKeptObservations++
 						}
@@ -460,7 +464,8 @@ func TestEMASampleRateHitsTargetRate(t *testing.T) {
 
 // This is very like the above test, but it uses GetSampleRateMulti with a random value between 1 and 100.
 func TestEMASampleRateMultiHitsTargetRate(t *testing.T) {
-	mrand.Seed(time.Now().Unix())
+	// a fixed seed, so the statistical assertions below are reproducible
+	rng := mrand.New(mrand.NewSource(7))
 	testRates := []int{50, 100}
 	testKeyCount := []int{10, 50}
 	tolerancePct := float64(0.2)
@@ -473,16 +478,19 @@ func TestEMASampleRateMultiHitsTargetRate(t *testing.T) {
 		for _, keyCount := range testKeyCount {
 			sampler := &EMASampleRate{GoalSampleRate: rate, Weight: 0.5, AgeOutValue: 0.5, currentCounts: make(map[string]float64), movingAverage: make(map[string]float64)}
 
-			// build a consistent set of keys to use
+			// Deterministic keys, because calculateSampleRates sorts keys and
+			// redistributes spare allocation in that order. randomString draws
+			// from crypto/rand, which no seed reaches, so random names moved the
+			// resulting rates on every run and are what made this test flake.
 			keys := make([]string, keyCount)
 			for i := 0; i < keyCount; i++ {
-				keys[i] = randomString(8)
+				keys[i] = fmt.Sprintf("key-%d", i)
 			}
 
 			for i, key := range keys {
 				// generate key counts of different magnitudes
 				base := math.Pow10(i%3 + 1)
-				count := float64(((i%10)+1))*base + float64(mrand.Intn(int(base)))
+				count := float64(((i%10)+1))*base + float64(rng.Intn(int(base)))
 				sampler.currentCounts[key] = count
 			}
 
@@ -496,10 +504,10 @@ func TestEMASampleRateMultiHitsTargetRate(t *testing.T) {
 				totalKeptObservations := 0
 				for j, key := range keys {
 					base := math.Pow10(j%3 + 1)
-					count := float64(((j%10)+1))*base + float64(mrand.Intn(int(base)))
+					count := float64(((j%10)+1))*base + float64(rng.Intn(int(base)))
 					for k := 0; k < int(count); k++ {
-						rate := sampler.GetSampleRateMulti(key, mrand.Intn(100))
-						if mrand.Intn(rate) == 0 {
+						rate := sampler.GetSampleRateMulti(key, rng.Intn(100))
+						if rng.Intn(rate) == 0 {
 							totalSampleRate += rate
 							totalKeptObservations++
 						}
