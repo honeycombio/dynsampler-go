@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPerKeyThroughputUpdateMaps(t *testing.T) {
@@ -429,6 +431,88 @@ func TestPerKeyThroughputMaxHoldsAcrossManyKeys(t *testing.T) {
 	}
 	assert.Len(t, p.savedSampleRates, numKeys)
 	assert.LessOrEqual(t, kept, float64(maxTotal))
+}
+
+func TestPerKeyThroughputMaxHoldsWhenKeysOvershootTheirGoal(t *testing.T) {
+	// Two keys counting 190 against a per-key goal of 100 each reported a demand of
+	// 100, which fits a maximum of 200 exactly, so the maximum never engaged and the
+	// pair delivered 380. Each case sets the maximum at the sum of the per-key goals,
+	// the boundary where a goal-derived demand reports that no maximum is needed.
+	tsts := []struct {
+		name     string
+		numKeys  int
+		count    int
+		perKey   int
+		maxTotal int
+	}{
+		{"two keys just under twice the goal", 2, 190, 100, 200},
+		{"one key just under twice the goal", 1, 190, 100, 100},
+		{"just over the goal", 53, 101, 100, 5300},
+		{"half again the goal", 10, 150, 100, 1000},
+		{"just under twice the goal at scale", 200, 199, 100, 20000},
+		{"just over twice the goal", 10, 201, 100, 1000},
+		{"just under three times the goal", 10, 299, 100, 1000},
+	}
+	for _, tst := range tsts {
+		t.Run(tst.name, func(t *testing.T) {
+			p := &PerKeyThroughput{
+				ClearFrequencyDuration:   time.Second,
+				PerKeyThroughputPerSec:   tst.perKey,
+				MaxTotalThroughputPerSec: tst.maxTotal,
+			}
+			counts := make(map[string]int, tst.numKeys)
+			for i := 0; i < tst.numKeys; i++ {
+				counts["key"+strconv.Itoa(i)] = tst.count
+			}
+			p.currentCounts = counts
+			p.updateMaps()
+
+			kept := 0.0
+			for _, rate := range p.savedSampleRates {
+				kept += float64(tst.count) / float64(rate)
+			}
+			assert.Len(t, p.savedSampleRates, tst.numKeys)
+			assert.LessOrEqual(t, kept, float64(tst.maxTotal))
+		})
+	}
+}
+
+func TestPerKeyThroughputMaxIsNeverExceeded(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	for trial := 0; trial < 5000; trial++ {
+		numKeys := 1 + rng.Intn(60)
+		counts := make(map[string]int, numKeys)
+		for i := 0; i < numKeys; i++ {
+			// a mix of keys well under their goal, keys around it and floods
+			switch rng.Intn(3) {
+			case 0:
+				counts["key"+strconv.Itoa(i)] = 1 + rng.Intn(20)
+			case 1:
+				counts["key"+strconv.Itoa(i)] = 1 + rng.Intn(5000)
+			default:
+				counts["key"+strconv.Itoa(i)] = 1 + rng.Intn(500000)
+			}
+		}
+		perKey := 1 + rng.Intn(2000)
+		maxTotal := 1 + rng.Intn(100000)
+		interval := time.Duration(1+rng.Intn(60)) * time.Second
+
+		p := &PerKeyThroughput{
+			ClearFrequencyDuration:   interval,
+			PerKeyThroughputPerSec:   perKey,
+			MaxTotalThroughputPerSec: maxTotal,
+		}
+		p.currentCounts = counts
+		p.updateMaps()
+
+		kept := 0.0
+		for k, c := range counts {
+			kept += float64(c) / float64(p.savedSampleRates[k])
+		}
+		budget := float64(maxTotal) * interval.Seconds()
+		require.LessOrEqualf(t, kept, budget,
+			"trial %d: keys=%d perKey=%d maxTotal=%d interval=%s", trial, numKeys, perKey, maxTotal, interval)
+	}
 }
 
 func TestPerKeyThroughputMaxKeysExcludedFromMaxTotal(t *testing.T) {

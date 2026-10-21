@@ -52,10 +52,11 @@ type PerKeyThroughput struct {
 	// send per second across all keys combined. Defaults to 0, which applies no
 	// maximum and leaves each key with the full PerKeyThroughputPerSec target.
 	// When the per-key targets would sum above the maximum, every key's allowance
-	// drops to a single shared level chosen so the maximum is spent in full: keys
-	// sending less than that level are unaffected and the rest share what is left
-	// equally. Keys rejected because MaxKeys has been reached are not counted and
-	// so are not bounded by the maximum.
+	// drops to a single shared level: keys sending less than that level are
+	// unaffected and the rest share what is left equally. Sample rates are whole
+	// numbers rounded up, so the delivered total sits at or under the maximum
+	// rather than exactly on it. Keys rejected because MaxKeys has been reached
+	// are not counted and so are not bounded by the maximum.
 	//
 	// The maximum bounds expected output per interval rather than guaranteeing it.
 	// Rates are fixed for the length of an interval, so a burst that arrives after
@@ -146,17 +147,22 @@ func (p *PerKeyThroughput) updateMaps() {
 	// figure out our target throughput per key over ClearFrequencyDuration
 	intervalSeconds := clearFrequencyDuration.Seconds()
 	perKeyGoal := float64(perKeyThroughputPerSec) * intervalSeconds
-	// if a maximum is set and the per-key goals would sum above it, lower every
-	// key's allowance to a single level that spends the maximum in full
+	// a maximum lowers every key's allowance to one shared level, leaving keys
+	// already under that level untouched
 	level := math.Inf(1)
 	if maxTotalThroughputPerSec > 0 {
+		// A rate is a whole number rounded down, so a key counting between one and
+		// two times the goal keeps everything and delivers up to twice it. Demand
+		// has to be that delivery rather than the goal, or the maximum is weighed
+		// against a total the sampler does not produce.
 		demands := make([]float64, 0, numKeys)
 		for _, v := range tmpCounts {
-			demands = append(demands, min(float64(v), perKeyGoal))
+			demands = append(demands, float64(v)/float64(max(1, int(float64(v)/perKeyGoal))))
 		}
 		level = waterFillLevel(demands, float64(maxTotalThroughputPerSec)*intervalSeconds)
 	}
-	limitedByMax := level < perKeyGoal
+	// any finite level came from the maximum, so rates round up from here on
+	limitedByMax := !math.IsInf(level, 1)
 	effectiveGoal := min(perKeyGoal, level)
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
@@ -164,8 +170,7 @@ func (p *PerKeyThroughput) updateMaps() {
 	for k, v := range tmpCounts {
 		rate := float64(v) / effectiveGoal
 		if limitedByMax {
-			// round up, because rounding down would let every key whose rate lands
-			// between 1 and 2 keep its whole count and take the total above the maximum
+			// rounding down would put the total back above the maximum
 			rate = math.Ceil(rate)
 		}
 		newSavedSampleRates[k] = int(max(1, rate))
