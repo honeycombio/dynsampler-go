@@ -675,3 +675,36 @@ func TestEMASampleRate_GetMetrics(t *testing.T) {
 		})
 	}
 }
+
+// As TestEMAThroughputBurstDetectionWithFullKeyspace, for the percentage sampler.
+func TestEMABurstDetectionWithFullKeyspace(t *testing.T) {
+	e := &EMASampleRate{AdjustmentIntervalDuration: 1 * time.Hour, GoalSampleRate: 20, MaxKeys: 2}
+	err := e.Start()
+	assert.Nil(t, err)
+	defer e.Stop()
+
+	e.currentCounts = map[string]float64{"foo": 1000}
+	e.updateMaps()
+	assert.Equal(t, float64(1000), e.burstThreshold)
+	e.intervalCount = e.BurstDetectionDelay
+
+	e.GetSampleRate("a")
+	e.GetSampleRate("b")
+	assert.Equal(t, 2, len(e.currentCounts))
+
+	e.GetSampleRate("flood")
+	_, tracked := e.currentCounts["flood"]
+	assert.False(t, tracked, "MaxKeys should have rejected the new key")
+
+	burstsBefore := e.burstCount
+	e.testSignalMapsDone = make(chan struct{}, 1)
+
+	e.GetSampleRateMulti("flood", 2000)
+
+	select {
+	case <-e.testSignalMapsDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no recalculation after a flood on a key rejected by MaxKeys")
+	}
+	assert.Equal(t, burstsBefore+1, e.burstCount)
+}
