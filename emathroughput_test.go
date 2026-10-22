@@ -434,10 +434,9 @@ func BenchmarkEMAThroughputGetMetrics(b *testing.B) {
 	}
 }
 
-// A flood arriving on a key that MaxKeys rejects still has to register as a
-// burst. Counting only accepted keys made a cardinality explosion the one case
-// burst detection could never see, so the sampler waited for its next tick
-// while the new keys went through at 1:1.
+// A flood arriving on a key that MaxKeys rejects still has to register as a burst,
+// so a cardinality explosion triggers an early recalculation rather than running
+// at 1:1 until the next tick.
 func TestEMAThroughputBurstDetectionWithFullKeyspace(t *testing.T) {
 	e := &EMAThroughput{AdjustmentInterval: 1 * time.Hour, MaxKeys: 2}
 	err := e.Start()

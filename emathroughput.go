@@ -275,9 +275,7 @@ func (e *EMAThroughput) GetSampleRateMulti(key string, count int) int {
 
 	// The burst sum measures incoming volume, so every observation counts towards
 	// it, including one on a key MaxKeys rejects. A flood arriving on new keys
-	// while the keyspace is full is exactly what an early recalculation is for,
-	// and counting only accepted keys made that case the one burst detection
-	// could never see.
+	// while the keyspace is full is what an early recalculation is for.
 	e.currentBurstSum += float64(count)
 
 	// Enforce MaxKeys limit on the size of the map

@@ -676,7 +676,8 @@ func TestEMASampleRate_GetMetrics(t *testing.T) {
 	}
 }
 
-// As TestEMAThroughputBurstDetectionWithFullKeyspace, for the percentage sampler.
+// A flood on a key that MaxKeys rejects still has to register as a burst here too,
+// since EMASampleRate shares the same detection path.
 func TestEMABurstDetectionWithFullKeyspace(t *testing.T) {
 	e := &EMASampleRate{AdjustmentIntervalDuration: 1 * time.Hour, GoalSampleRate: 20, MaxKeys: 2}
 	err := e.Start()
