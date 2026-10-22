@@ -609,8 +609,8 @@ func TestPerKeyThroughputSetters(t *testing.T) {
 	p.SetMaxTotalThroughputPerSec(-1)
 	assert.Equal(t, 100, p.MaxTotalThroughputPerSec)
 
-	// the new values are the ones updateMaps uses: five keys sharing a maximum of
-	// 100 gives a level of 20, not the 200 the original maximum would have allowed
+	// the new values are the ones updateMaps uses, so five keys sharing a maximum
+	// of 100 give a level of 20 rather than the 200 the original maximum allowed
 	p.currentCounts = map[string]int{"a": 1000, "b": 1000, "c": 1000, "d": 1000, "e": 1000}
 	p.updateMaps()
 	assert.Equal(t, map[string]int{"a": 50, "b": 50, "c": 50, "d": 50, "e": 50}, p.savedSampleRates)

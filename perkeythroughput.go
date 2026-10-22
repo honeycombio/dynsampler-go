@@ -48,20 +48,14 @@ type PerKeyThroughput struct {
 	// keep-everything rate of 1. Defaults to 0, which preserves that default behavior.
 	OverflowSampleRate int
 
-	// MaxTotalThroughputPerSec, if greater than 0, is the maximum number of events to
-	// send per second across all keys combined. Defaults to 0, which applies no
+	// MaxTotalThroughputPerSec, if greater than 0, is the maximum number of events
+	// to send per second across all keys combined. Defaults to 0, which applies no
 	// maximum and leaves each key with the full PerKeyThroughputPerSec target.
-	// When the per-key targets would sum above the maximum, every key's allowance
-	// drops to a single shared level: keys sending less than that level are
-	// unaffected and the rest share what is left equally. Sample rates are whole
-	// numbers rounded up, so the delivered total sits at or under the maximum
-	// rather than exactly on it. Keys rejected because MaxKeys has been reached
-	// are not counted and so are not bounded by the maximum.
 	//
-	// The maximum bounds expected output per interval rather than guaranteeing it.
-	// Rates are fixed for the length of an interval, so a burst that arrives after
-	// one opens is sampled at the previous interval's rates and the total can
-	// overshoot until the next recalculation.
+	// It bounds expected output per interval rather than guaranteeing it. Rates are
+	// fixed for the length of an interval, so a burst arriving after one opens is
+	// sampled at the previous interval's rates. Keys rejected because MaxKeys has
+	// been reached are not counted, so they are not bounded by it either.
 	MaxTotalThroughputPerSec int
 
 	savedSampleRates map[string]int
@@ -181,21 +175,18 @@ func (p *PerKeyThroughput) updateMaps() {
 	p.savedSampleRates = newSavedSampleRates
 }
 
-// waterFillLevel returns the per-key allowance that spends maxTotal in full when
-// the given demands sum above it. Keys demanding less than the level are left
-// alone and the rest share what remains equally, so a key is only lowered to pay
-// for the maximum once every smaller key has been satisfied. It returns +Inf when
-// the demands already fit within maxTotal, meaning no key needs lowering. The
+// waterFillLevel returns the per-key allowance that spends maxTotal in full, or
+// +Inf when the demands already fit within it and no key needs lowering. The
 // demands slice is sorted in place.
 func waterFillLevel(demands []float64, maxTotal float64) float64 {
 	slices.Sort(demands)
 	remaining := maxTotal
-	for i, d := range demands {
-		n := float64(len(demands) - i)
-		if d*n > remaining {
-			return remaining / n
+	for i, demand := range demands {
+		keysLeft := float64(len(demands) - i)
+		if demand*keysLeft > remaining {
+			return remaining / keysLeft
 		}
-		remaining -= d
+		remaining -= demand
 	}
 	return math.Inf(1)
 }
