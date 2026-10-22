@@ -18,7 +18,6 @@ The minimum Go version is now 1.23.
 
 ### 🐛 Fixes
 
-- fix: hold each key to its allowance so the maximum is not exceeded by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/122
 - fix: count every observation towards the burst sum by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/126
 - fix: buffer the burst signal so a busy consumer cannot drop a burst by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/118
 
