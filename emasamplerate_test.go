@@ -414,10 +414,8 @@ func TestEMASampleRateHitsTargetRate(t *testing.T) {
 		for _, keyCount := range testKeyCount {
 			sampler := &EMASampleRate{GoalSampleRate: rate, Weight: 0.5, AgeOutValue: 0.5, currentCounts: make(map[string]float64), movingAverage: make(map[string]float64)}
 
-			// Deterministic keys, because calculateSampleRates sorts keys and
-			// redistributes spare allocation in that order. randomString draws
-			// from crypto/rand, which no seed reaches, so random names moved the
-			// resulting rates on every run and are what made this test flake.
+			// Deterministic keys, because calculateSampleRates redistributes spare
+			// allocation in key order, so the names decide the resulting rates.
 			keys := make([]string, keyCount)
 			for i := 0; i < keyCount; i++ {
 				keys[i] = fmt.Sprintf("key-%d", i)
@@ -478,10 +476,8 @@ func TestEMASampleRateMultiHitsTargetRate(t *testing.T) {
 		for _, keyCount := range testKeyCount {
 			sampler := &EMASampleRate{GoalSampleRate: rate, Weight: 0.5, AgeOutValue: 0.5, currentCounts: make(map[string]float64), movingAverage: make(map[string]float64)}
 
-			// Deterministic keys, because calculateSampleRates sorts keys and
-			// redistributes spare allocation in that order. randomString draws
-			// from crypto/rand, which no seed reaches, so random names moved the
-			// resulting rates on every run and are what made this test flake.
+			// Deterministic keys, because calculateSampleRates redistributes spare
+			// allocation in key order, so the names decide the resulting rates.
 			keys := make([]string, keyCount)
 			for i := 0; i < keyCount; i++ {
 				keys[i] = fmt.Sprintf("key-%d", i)

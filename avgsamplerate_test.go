@@ -354,10 +354,8 @@ func TestAvgSampleRateHitsTargetRate(t *testing.T) {
 		for _, keyCount := range testKeyCount {
 			sampler := &AvgSampleRate{GoalSampleRate: rate, currentCounts: make(map[string]float64)}
 
-			// Deterministic keys, because calculateSampleRates sorts keys and
-			// redistributes spare allocation in that order. randomString draws
-			// from crypto/rand, which no seed reaches, so random names moved the
-			// resulting rates on every run.
+			// Deterministic keys, because calculateSampleRates redistributes spare
+			// allocation in key order, so the names decide the resulting rates.
 			keys := make([]string, keyCount)
 			for i := 0; i < keyCount; i++ {
 				keys[i] = fmt.Sprintf("key-%d", i)
@@ -426,6 +424,8 @@ func TestAvgSampleUpdateMapsSparseCounts(t *testing.T) {
 	assert.Equal(t, 16, a.savedSampleRates["largest_count"])
 }
 
+// randomString draws from crypto/rand, so no seed reaches it and callers that
+// need reproducible names have to build their own.
 func randomString(length int) string {
 	b := make([]byte, length/2)
 	rand.Read(b)
