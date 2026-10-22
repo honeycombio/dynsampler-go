@@ -5,7 +5,7 @@ This package is intended to help sample a stream of tracking events, where event
 
 For the purposes of these examples, the "traffic" will be a set of HTTP requests being handled by a server, and "event" will be a blob of metadata about a given HTTP request that might be useful to keep track of later. A "sample rate" of 100 means that for every 100 requests, we capture a single event and indicate that it represents 100 similar requests.
 
-Use
+# Use
 
 Use the `Sampler` interface in your code.  Each different sampling algorithm implements the Sampler interface.
 
@@ -29,6 +29,5 @@ detailed description of how it chooses a sample rate.
 Some implementations implement `SaveState` and `LoadState` - enabling you to serialize the Sampler's internal state
 and load it back. This is useful, for example, if you want to avoid losing calculated sample rates between process
 restarts.
-
 */
 package dynsampler
