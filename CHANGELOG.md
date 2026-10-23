@@ -1,5 +1,39 @@
 # dynsampler-go changelog
 
+## 0.7.0 2026-10-22
+
+This version gives `PerKeyThroughput` an optional maximum across all keys, so a per-key target can be used on a large keyspace without the combined output growing with the key count. It also adds an opt-in sample rate for keys rejected at the `MaxKeys` cap on every sampler that has one, so a cardinality explosion degrades toward the goal instead of keeping everything.
+
+Two defects in the EMA samplers' burst detection are fixed. One dropped a detected burst when the background goroutine was busy. The other left a flood on keys rejected at the `MaxKeys` cap invisible to detection entirely, so the case an early recalculation is most for was the one case that could never trigger it.
+
+The minimum Go version is now 1.23.
+
+## What's Changed
+
+### 💡 Enhancements
+
+- feat: optional maximum total throughput for PerKeyThroughput by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/121
+- feat: opt-in OverflowSampleRate for keys over the MaxKeys cap by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/109
+- feat: extend OverflowSampleRate to the remaining MaxKeys samplers by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/117
+
+### 🐛 Fixes
+
+- fix: count every observation towards the burst sum by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/126
+- fix: buffer the burst signal so a busy consumer cannot drop a burst by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/118
+
+### 🛠 Maintenance
+
+- maint: raise minimum go version to 1.23 by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/120
+- maint: remove the unreleased caller-driven calculators by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/111
+- test: make the target-rate tests deterministic by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/124
+- test: use a fixed seed in the EMA throughput target-rate test to stop CI flakes by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/103
+- maint(deps): bump github.com/stretchr/testify from 1.11.1 to 1.12.1 by @dependabot in https://github.com/honeycombio/dynsampler-go/pull/100
+- chore: remove llm-o11y and ai-o11y from codeowners by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/96
+- chore: add oss-maintainers to codeowners by @VinozzZ in https://github.com/honeycombio/dynsampler-go/pull/95
+- chore(codeowners): update Agent O11y and LLM O11y teams by @benhanzl in https://github.com/honeycombio/dynsampler-go/pull/94
+- chore: update codeowners by @benhanzl in https://github.com/honeycombio/dynsampler-go/pull/93
+- chore: remove add-to-project workflow by @MikeGoldsmith in https://github.com/honeycombio/dynsampler-go/pull/92
+
 ## 0.6.4 2026-02-03
 
 This version adds the ability to dynamically adjust sampling goals and fixes a concurrency bug in the WindowedThroughput sampler.
