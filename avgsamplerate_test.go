@@ -340,7 +340,8 @@ func TestAvgSampleRateSaveState(t *testing.T) {
 // number of times. Most of the time, the average sample rate of observations kept should be close
 // to the target rate
 func TestAvgSampleRateHitsTargetRate(t *testing.T) {
-	mrand.Seed(time.Now().Unix())
+	// a fixed seed, so the statistical assertions below are reproducible
+	rng := mrand.New(mrand.NewSource(7))
 	testRates := []int{50, 100}
 	testKeyCount := []int{10, 100}
 	tolerancePct := float64(0.2)
@@ -353,17 +354,18 @@ func TestAvgSampleRateHitsTargetRate(t *testing.T) {
 		for _, keyCount := range testKeyCount {
 			sampler := &AvgSampleRate{GoalSampleRate: rate, currentCounts: make(map[string]float64)}
 
-			// build a consistent set of keys to use
+			// Deterministic keys, because calculateSampleRates redistributes spare
+			// allocation in key order, so the names decide the resulting rates.
 			keys := make([]string, keyCount)
 			for i := 0; i < keyCount; i++ {
-				keys[i] = randomString(8)
+				keys[i] = fmt.Sprintf("key-%d", i)
 			}
 
 			for i, key := range keys {
 				// generate key counts of different magnitudes - keys reliably get the same magnitude
 				// so that count ranges are reasonable (i.e. they don't go from 1 to 10000 back to 100)
 				base := math.Pow10(i%3 + 1)
-				count := float64(((i%10)+1))*base + float64(mrand.Intn(int(base)))
+				count := float64(((i%10)+1))*base + float64(rng.Intn(int(base)))
 				sampler.currentCounts[key] = count
 			}
 
@@ -377,10 +379,10 @@ func TestAvgSampleRateHitsTargetRate(t *testing.T) {
 				totalKeptObservations := 0
 				for j, key := range keys {
 					base := math.Pow10(j%3 + 1)
-					count := float64(((j%10)+1))*base + float64(mrand.Intn(int(base)))
+					count := float64(((j%10)+1))*base + float64(rng.Intn(int(base)))
 					for k := 0; k < int(count); k++ {
 						rate := sampler.GetSampleRate(key)
-						if mrand.Intn(rate) == 0 {
+						if rng.Intn(rate) == 0 {
 							totalSampleRate += rate
 							totalKeptObservations++
 						}
@@ -422,6 +424,8 @@ func TestAvgSampleUpdateMapsSparseCounts(t *testing.T) {
 	assert.Equal(t, 16, a.savedSampleRates["largest_count"])
 }
 
+// randomString draws from crypto/rand, so no seed reaches it and callers that
+// need reproducible names have to build their own.
 func randomString(length int) string {
 	b := make([]byte, length/2)
 	rand.Read(b)
