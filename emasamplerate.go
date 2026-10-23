@@ -265,19 +265,22 @@ func (e *EMASampleRate) GetSampleRateMulti(key string, count int) int {
 	e.requestCount++
 	e.eventCount += int64(count)
 
+	// The burst sum measures incoming volume, so every observation counts towards
+	// it, including one on a key MaxKeys rejects. A flood arriving on new keys
+	// while the keyspace is full is what an early recalculation is for.
+	e.currentBurstSum += float64(count)
+
 	// Enforce MaxKeys limit on the size of the map
 	overflowed := false
 	if e.MaxKeys > 0 {
 		// If a key already exists, increment it. If not, but we're under the limit, store a new key
 		if _, found := e.currentCounts[key]; found || len(e.currentCounts) < e.MaxKeys {
 			e.currentCounts[key] += float64(count)
-			e.currentBurstSum += float64(count)
 		} else {
 			overflowed = true
 		}
 	} else {
 		e.currentCounts[key] += float64(count)
-		e.currentBurstSum += float64(count)
 	}
 
 	// Enforce the burst threshold

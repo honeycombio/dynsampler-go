@@ -433,3 +433,41 @@ func BenchmarkEMAThroughputGetMetrics(b *testing.B) {
 		_ = result // Prevent compiler optimization
 	}
 }
+
+// A flood arriving on a key that MaxKeys rejects still has to register as a burst,
+// so a cardinality explosion triggers an early recalculation rather than running
+// at 1:1 until the next tick.
+func TestEMAThroughputBurstDetectionWithFullKeyspace(t *testing.T) {
+	e := &EMAThroughput{AdjustmentInterval: 1 * time.Hour, MaxKeys: 2}
+	err := e.Start()
+	assert.Nil(t, err)
+	defer e.Stop()
+
+	// prime the moving average so a burst threshold exists
+	e.currentCounts = map[string]float64{"foo": 1000}
+	e.updateMaps()
+	assert.Equal(t, float64(1000), e.burstThreshold)
+	e.intervalCount = e.BurstDetectionDelay
+
+	// fill the keyspace so any further new key is rejected
+	e.GetSampleRate("a")
+	e.GetSampleRate("b")
+	assert.Equal(t, 2, len(e.currentCounts))
+
+	// confirm the rejection, with a count too small to trip the threshold
+	e.GetSampleRate("flood")
+	_, tracked := e.currentCounts["flood"]
+	assert.False(t, tracked, "MaxKeys should have rejected the new key")
+
+	burstsBefore := e.burstCount
+	e.testSignalMapsDone = make(chan struct{}, 1)
+
+	e.GetSampleRateMulti("flood", 2000)
+
+	select {
+	case <-e.testSignalMapsDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no recalculation after a flood on a key rejected by MaxKeys")
+	}
+	assert.Equal(t, burstsBefore+1, e.burstCount)
+}
