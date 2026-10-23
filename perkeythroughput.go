@@ -3,6 +3,7 @@ package dynsampler
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"time"
 )
@@ -14,6 +15,10 @@ import (
 // get transmitted, no matter how many keys you have or how much traffic comes
 // through. In other words, if capturing a minimum amount of traffic per key is
 // important but beyond that doesn't matter much, this is the best method.
+//
+// An optional MaxTotalThroughputPerSec sets a maximum for the combined output across
+// all keys, for when the number of keys is large enough that the per-key goal alone
+// allows more traffic than the destination should receive.
 type PerKeyThroughput struct {
 	// DEPRECATED -- use ClearFrequencyDuration.
 	// ClearFrequencySec is how often the counters reset in seconds.
@@ -34,14 +39,24 @@ type PerKeyThroughput struct {
 	// MaxKeys is reached, new keys will not be included in the sample rate map, but
 	// existing keys will continue to be be counted.
 	// Rejected keys are not counted, so they do not contribute to the rates computed
-	// for keys accepted under MaxKeys. Total output can exceed the goal while keys are
-	// being rejected.
+	// for keys accepted under MaxKeys. Total output can exceed the goal or the
+	// maximum while keys are being rejected.
 	MaxKeys int
 
 	// OverflowSampleRate, if greater than 0, is the sample rate returned for a key
 	// that is rejected because MaxKeys has been reached, instead of the default
 	// keep-everything rate of 1. Defaults to 0, which preserves that default behavior.
 	OverflowSampleRate int
+
+	// MaxTotalThroughputPerSec, if greater than 0, is the maximum number of events
+	// to send per second across all keys combined. Defaults to 0, which applies no
+	// maximum and leaves each key with the full PerKeyThroughputPerSec target.
+	//
+	// It bounds expected output per interval rather than guaranteeing it. Rates are
+	// fixed for the length of an interval, so a burst arriving after one opens is
+	// sampled at the previous interval's rates. Keys rejected because MaxKeys has
+	// been reached are not counted, so they are not bounded by it either.
+	MaxTotalThroughputPerSec int
 
 	savedSampleRates map[string]int
 	currentCounts    map[string]int
@@ -110,6 +125,9 @@ func (p *PerKeyThroughput) updateMaps() {
 	p.lock.Lock()
 	tmpCounts := p.currentCounts
 	p.currentCounts = make(map[string]int)
+	perKeyThroughputPerSec := p.PerKeyThroughputPerSec
+	maxTotalThroughputPerSec := p.MaxTotalThroughputPerSec
+	clearFrequencyDuration := p.ClearFrequencyDuration
 	p.lock.Unlock()
 	// short circuit if no traffic
 	numKeys := len(tmpCounts)
@@ -120,18 +138,57 @@ func (p *PerKeyThroughput) updateMaps() {
 		p.savedSampleRates = make(map[string]int)
 		return
 	}
-	actualPerKeyRate := p.PerKeyThroughputPerSec * int(p.ClearFrequencyDuration.Seconds())
+	// figure out our target throughput per key over ClearFrequencyDuration
+	intervalSeconds := clearFrequencyDuration.Seconds()
+	perKeyGoal := float64(perKeyThroughputPerSec) * intervalSeconds
+	// a maximum lowers every key's allowance to one shared level, leaving keys
+	// already under that level untouched
+	level := math.Inf(1)
+	if maxTotalThroughputPerSec > 0 {
+		// A rate is a whole number rounded down, so a key counting between one and
+		// two times the goal keeps everything and delivers up to twice it. Demand
+		// has to be that delivery rather than the goal, or the maximum is weighed
+		// against a total the sampler does not produce.
+		demands := make([]float64, 0, numKeys)
+		for _, v := range tmpCounts {
+			demands = append(demands, float64(v)/float64(max(1, int(float64(v)/perKeyGoal))))
+		}
+		level = waterFillLevel(demands, float64(maxTotalThroughputPerSec)*intervalSeconds)
+	}
+	// any finite level came from the maximum, so rates round up from here on
+	limitedByMax := !math.IsInf(level, 1)
+	effectiveGoal := min(perKeyGoal, level)
 	// for each key, calculate sample rate by dividing counted events by the
 	// desired number of events
 	newSavedSampleRates := make(map[string]int)
 	for k, v := range tmpCounts {
-		rate := int(math.Max(1, (float64(v) / float64(actualPerKeyRate))))
-		newSavedSampleRates[k] = rate
+		rate := float64(v) / effectiveGoal
+		if limitedByMax {
+			// rounding down would put the total back above the maximum
+			rate = math.Ceil(rate)
+		}
+		newSavedSampleRates[k] = int(max(1, rate))
 	}
 	// save newly calculated sample rates
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.savedSampleRates = newSavedSampleRates
+}
+
+// waterFillLevel returns the per-key allowance that spends maxTotal in full, or
+// +Inf when the demands already fit within it and no key needs lowering. The
+// demands slice is sorted in place.
+func waterFillLevel(demands []float64, maxTotal float64) float64 {
+	slices.Sort(demands)
+	remaining := maxTotal
+	for i, demand := range demands {
+		keysLeft := float64(len(demands) - i)
+		if demand*keysLeft > remaining {
+			return remaining / keysLeft
+		}
+		remaining -= demand
+	}
+	return math.Inf(1)
 }
 
 // GetSampleRate takes a key and returns the appropriate sample rate for that
@@ -168,6 +225,27 @@ func (p *PerKeyThroughput) GetSampleRateMulti(key string, count int) int {
 		return p.OverflowSampleRate
 	}
 	return 1
+}
+
+// SetPerKeyThroughputPerSec updates the per key throughput per second in a
+// concurrency-safe manner. Values of 0 or less are ignored.
+func (p *PerKeyThroughput) SetPerKeyThroughputPerSec(throughput int) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if throughput > 0 {
+		p.PerKeyThroughputPerSec = throughput
+	}
+}
+
+// SetMaxTotalThroughputPerSec updates the maximum total throughput in a
+// concurrency-safe manner. Values of 0 or less are ignored, so the maximum
+// cannot be enabled or removed at runtime by passing one.
+func (p *PerKeyThroughput) SetMaxTotalThroughputPerSec(throughput int) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if throughput > 0 {
+		p.MaxTotalThroughputPerSec = throughput
+	}
 }
 
 // SaveState is not implemented
