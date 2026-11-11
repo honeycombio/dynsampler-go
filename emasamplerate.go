@@ -117,8 +117,11 @@ type EMASampleRate struct {
 // Ensure we implement the sampler interface
 var _ Sampler = (*EMASampleRate)(nil)
 
-func (e *EMASampleRate) Start() error {
-	// apply defaults
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (e *EMASampleRate) ApplyDefaults() error {
 	if e.AdjustmentIntervalDuration != 0 && e.AdjustmentInterval != 0 {
 		return fmt.Errorf("the AdjustmentInterval configuration value is deprecated; use only AdjustmentIntervalDuration")
 	}
@@ -127,6 +130,7 @@ func (e *EMASampleRate) Start() error {
 		e.AdjustmentIntervalDuration = 15 * time.Second
 	} else if e.AdjustmentInterval != 0 {
 		e.AdjustmentIntervalDuration = time.Duration(e.AdjustmentInterval) * time.Second
+		e.AdjustmentInterval = 0
 	}
 
 	if e.GoalSampleRate == 0 {
@@ -143,6 +147,13 @@ func (e *EMASampleRate) Start() error {
 	}
 	if e.BurstDetectionDelay == 0 {
 		e.BurstDetectionDelay = 3
+	}
+	return nil
+}
+
+func (e *EMASampleRate) Start() error {
+	if err := e.ApplyDefaults(); err != nil {
+		return err
 	}
 
 	// Don't override these maps at startup in case they were loaded from a previous state
