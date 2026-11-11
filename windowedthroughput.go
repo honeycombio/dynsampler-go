@@ -36,7 +36,8 @@ type WindowedThroughput struct {
 	// LookbackFrequency is how far back in time we lookback to dynamically adjust our sampling
 	// rate. Default is 30 * UpdateFrequencyDuration. This will be 30s assuming the default
 	// configuration of UpdateFrequencyDuration. We enforce this to be an _integer multiple_ of
-	// UpdateFrequencyDuration.
+	// UpdateFrequencyDuration, and a lookback shorter than UpdateFrequencyDuration takes the
+	// default.
 	LookbackFrequencyDuration time.Duration
 
 	// Target throughput per second.
@@ -102,20 +103,32 @@ func (g *UnixSecondsIndexGenerator) DurationToIndexes(duration time.Duration) in
 	return duration.Nanoseconds() / g.DurationPerIndex.Nanoseconds()
 }
 
-func (t *WindowedThroughput) Start() error {
-	// apply defaults
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (t *WindowedThroughput) ApplyDefaults() error {
 	if t.UpdateFrequencyDuration == 0 {
 		t.UpdateFrequencyDuration = time.Second
 	}
+	// Floor LookbackFrequencyDuration to be an integer multiple of UpdateFrequencyDuration.
+	// A lookback shorter than one update window floors to zero and takes the default,
+	// so applying the defaults a second time cannot change the lookback.
+	t.LookbackFrequencyDuration = t.UpdateFrequencyDuration *
+		(t.LookbackFrequencyDuration / t.UpdateFrequencyDuration)
 	if t.LookbackFrequencyDuration == 0 {
 		t.LookbackFrequencyDuration = 30 * t.UpdateFrequencyDuration
 	}
-	// Floor LookbackFrequencyDuration to be an integer multiple of UpdateFrequencyDuration.
-	t.LookbackFrequencyDuration = t.UpdateFrequencyDuration *
-		(t.LookbackFrequencyDuration / t.UpdateFrequencyDuration)
 
 	if t.GoalThroughputPerSec == 0 {
 		t.GoalThroughputPerSec = 100
+	}
+	return nil
+}
+
+func (t *WindowedThroughput) Start() error {
+	if err := t.ApplyDefaults(); err != nil {
+		return err
 	}
 
 	// Initialize countList.

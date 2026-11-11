@@ -61,8 +61,11 @@ type PerKeyThroughput struct {
 // Ensure we implement the sampler interface
 var _ Sampler = (*PerKeyThroughput)(nil)
 
-func (p *PerKeyThroughput) Start() error {
-	// apply defaults
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (p *PerKeyThroughput) ApplyDefaults() error {
 	if p.ClearFrequencyDuration != 0 && p.ClearFrequencySec != 0 {
 		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
@@ -71,10 +74,18 @@ func (p *PerKeyThroughput) Start() error {
 		p.ClearFrequencyDuration = 30 * time.Second
 	} else if p.ClearFrequencySec != 0 {
 		p.ClearFrequencyDuration = time.Duration(p.ClearFrequencySec) * time.Second
+		p.ClearFrequencySec = 0
 	}
 
 	if p.PerKeyThroughputPerSec == 0 {
 		p.PerKeyThroughputPerSec = 10
+	}
+	return nil
+}
+
+func (p *PerKeyThroughput) Start() error {
+	if err := p.ApplyDefaults(); err != nil {
+		return err
 	}
 
 	// initialize internal variables

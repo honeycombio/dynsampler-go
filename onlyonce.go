@@ -47,8 +47,11 @@ type OnlyOnce struct {
 // Ensure we implement the sampler interface
 var _ Sampler = (*OnlyOnce)(nil)
 
-// Start initializes the static dynsampler
-func (o *OnlyOnce) Start() error {
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (o *OnlyOnce) ApplyDefaults() error {
 	if o.ClearFrequencyDuration != 0 && o.ClearFrequencySec != 0 {
 		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
@@ -57,6 +60,16 @@ func (o *OnlyOnce) Start() error {
 		o.ClearFrequencyDuration = 30 * time.Second
 	} else if o.ClearFrequencySec != 0 {
 		o.ClearFrequencyDuration = time.Duration(o.ClearFrequencySec) * time.Second
+		o.ClearFrequencySec = 0
+	}
+
+	return nil
+}
+
+// Start initializes the static dynsampler
+func (o *OnlyOnce) Start() error {
+	if err := o.ApplyDefaults(); err != nil {
+		return err
 	}
 
 	// if it's negative, we don't even start something

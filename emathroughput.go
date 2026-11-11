@@ -123,8 +123,11 @@ type EMAThroughput struct {
 // Ensure we implement the sampler interface
 var _ Sampler = (*EMAThroughput)(nil)
 
-func (e *EMAThroughput) Start() error {
-	// apply defaults
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (e *EMAThroughput) ApplyDefaults() error {
 	if e.AdjustmentInterval == 0 {
 		e.AdjustmentInterval = 15 * time.Second
 	}
@@ -148,6 +151,13 @@ func (e *EMAThroughput) Start() error {
 	}
 	if e.BurstDetectionDelay == 0 {
 		e.BurstDetectionDelay = 3
+	}
+	return nil
+}
+
+func (e *EMAThroughput) Start() error {
+	if err := e.ApplyDefaults(); err != nil {
+		return err
 	}
 
 	// Don't override these maps at startup in case they were loaded from a previous state

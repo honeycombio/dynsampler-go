@@ -67,8 +67,11 @@ type TotalThroughput struct {
 // Ensure we implement the sampler interface
 var _ Sampler = (*TotalThroughput)(nil)
 
-func (t *TotalThroughput) Start() error {
-	// apply defaults
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (t *TotalThroughput) ApplyDefaults() error {
 	if t.ClearFrequencyDuration != 0 && t.ClearFrequencySec != 0 {
 		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
@@ -77,10 +80,18 @@ func (t *TotalThroughput) Start() error {
 		t.ClearFrequencyDuration = 30 * time.Second
 	} else if t.ClearFrequencySec != 0 {
 		t.ClearFrequencyDuration = time.Duration(t.ClearFrequencySec) * time.Second
+		t.ClearFrequencySec = 0
 	}
 
 	if t.GoalThroughputPerSec == 0 {
 		t.GoalThroughputPerSec = 100
+	}
+	return nil
+}
+
+func (t *TotalThroughput) Start() error {
+	if err := t.ApplyDefaults(); err != nil {
+		return err
 	}
 
 	// initialize internal variables

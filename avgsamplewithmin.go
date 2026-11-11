@@ -74,8 +74,11 @@ type AvgSampleWithMin struct {
 // Ensure we implement the sampler interface
 var _ Sampler = (*AvgSampleWithMin)(nil)
 
-func (a *AvgSampleWithMin) Start() error {
-	// apply defaults
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (a *AvgSampleWithMin) ApplyDefaults() error {
 	if a.ClearFrequencyDuration != 0 && a.ClearFrequencySec != 0 {
 		return fmt.Errorf("the ClearFrequencySec configuration value is deprecated; use only ClearFrequencyDuration")
 	}
@@ -84,6 +87,7 @@ func (a *AvgSampleWithMin) Start() error {
 		a.ClearFrequencyDuration = 30 * time.Second
 	} else if a.ClearFrequencySec != 0 {
 		a.ClearFrequencyDuration = time.Duration(a.ClearFrequencySec) * time.Second
+		a.ClearFrequencySec = 0
 	}
 
 	if a.GoalSampleRate == 0 {
@@ -91,6 +95,13 @@ func (a *AvgSampleWithMin) Start() error {
 	}
 	if a.MinEventsPerSec == 0 {
 		a.MinEventsPerSec = 50
+	}
+	return nil
+}
+
+func (a *AvgSampleWithMin) Start() error {
+	if err := a.ApplyDefaults(); err != nil {
+		return err
 	}
 
 	// initialize internal variables

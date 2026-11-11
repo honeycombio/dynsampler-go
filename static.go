@@ -25,12 +25,20 @@ type Static struct {
 // Ensure we implement the sampler interface
 var _ Sampler = (*Static)(nil)
 
-// Start initializes the static dynsampler
-func (s *Static) Start() error {
+// ApplyDefaults sets each field left at its zero value to the default Start
+// uses, without starting the sampler. Start calls it, so calling it first is
+// optional. It lets a caller read the configuration the sampler will run with,
+// for example to tell whether two samplers would behave the same.
+func (s *Static) ApplyDefaults() error {
 	if s.Default == 0 {
 		s.Default = 1
 	}
 	return nil
+}
+
+// Start initializes the static dynsampler
+func (s *Static) Start() error {
+	return s.ApplyDefaults()
 }
 
 func (s *Static) Stop() error {
