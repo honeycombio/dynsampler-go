@@ -427,3 +427,22 @@ func TestAvgSampleWithMin_GetMetrics(t *testing.T) {
 		})
 	}
 }
+
+func TestAvgSampleWithMinBelowMinimumStopsSampling(t *testing.T) {
+	a := &AvgSampleWithMin{
+		GoalSampleRate:         20,
+		MinEventsPerSec:        50,
+		ClearFrequencyDuration: 30 * time.Second,
+	}
+	assert.NoError(t, a.Start())
+	defer a.Stop()
+
+	// before the first interval completes we use the goal sample rate
+	assert.Equal(t, 20, a.GetSampleRate("one"))
+
+	// the first interval saw far fewer than MinEventsPerSec * ClearFrequencyDuration events
+	a.updateMaps()
+
+	assert.Equal(t, 1, a.GetSampleRate("one"))
+	assert.Equal(t, 1, a.GetSampleRate("never-seen"))
+}
