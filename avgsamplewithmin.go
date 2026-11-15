@@ -155,6 +155,9 @@ func (a *AvgSampleWithMin) updateMaps() {
 		a.lock.Lock()
 		defer a.lock.Unlock()
 		a.savedSampleRates = newSavedSampleRates
+		// We have seen a full interval of traffic, so stop answering with the
+		// startup goal rate and report the rate of 1 for every key.
+		a.haveData = true
 		return
 	}
 	// goalRatio is the goalCount divided by the sum of all the log values - it
